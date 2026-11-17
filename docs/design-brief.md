@@ -1,0 +1,210 @@
+# Alpine Front — Game Design Brief (Stage 1)
+
+This file is the source of truth for the design. Decisions are changed here first, then in code.
+Why each decision was taken, and what was rejected, is in [decisions.md](decisions.md).
+
+## Vision
+
+A First World War strategy and tactics game set on the Alpine front, in which every soldier is
+simulated as an individual. The player commands an Austro-Hungarian company holding the summit of
+Col di Lana through a season or a year. Battles are episodes inside a longer game of survival,
+engineering and supply.
+
+The target is 3,000 to 5,000 simulated soldiers at once, with several hundred as the fallback. The
+first playable version needs only 150 to 250.
+
+The game should make the landscape itself the main opponent: altitude, snow, rock, cold and the
+difficulty of moving anything uphill.
+
+## Roles and workflow
+
+Claude Code writes all the code. The human is director and consulting designer and does not review
+code, so correctness is judged by behaviour.
+
+That makes verification tooling part of the first milestone, not a later extra:
+
+- **Replays.** Any run can be reproduced exactly from a seed and an order log. This holds on the
+  same machine and game version; every test runs twice and must match. Saved games are full
+  snapshots, because code changes break old replays.
+- **Debug overlays.** Morale, supply, line of sight and belief state can be shown on the map.
+- **Scenario tests.** Design statements written as automated tests, for example "a platoon
+  attacking uphill over open scree against one machine gun fails nine times in ten." Claude drafts
+  the expected outcomes; the director approves them, and they are then locked: Claude may not
+  change one without asking. Tuning numbers live in readable data files, and each run ends in a
+  plain-language report.
+- **Speed pass.** After every build step, on the development PC (the only test machine). See
+  [Build order](#build-order).
+- **This document.** Claude Code re-reads it each session; decisions are changed here first, then
+  in code.
+
+## Agreed decisions
+
+| Area | Decision | Reason |
+| --- | --- | --- |
+| Language | Rust | Performance, and the strict compiler acts as a first reviewer for code no human reads |
+| Engine | Bevy, pinned to one version | Rust-native, everything is code with no visual editor; used for drawing and input only, the simulation does not depend on it |
+| Simulation | Headless, deterministic core in its own crate with no rendering dependency | Testable and replayable without a screen; the view is replaceable |
+| Simulation base | Plain Rust with its own data and a fixed run order, splitting work across cores explicitly; Bevy only draws a snapshot each frame | Exact replays by design, and Bevy upgrades cannot change how the simulation behaves |
+| Terrain | 3D, built from real elevation data | Conveys the landscape of mountain warfare |
+| Units | Simple shapes when zoomed out, low-detail figures built in code with a few poses up close; instanced | Cheap to draw in thousands; no artist needed |
+| Screens | egui for now; the final period look is decided before the campaign step | Fast to build now, and no styling wasted on screens that may change |
+| Target hardware | Strong gaming PC as the minimum: 8 cores, 32 GB memory, RTX 3070 class graphics | Headroom for soldier count and terrain; a speed pass after every build step keeps it honest |
+| Player seat, first | Company commander on one position, 150 to 250 men | Exercises every mechanic on a small map |
+| Player seat, later | Sector commander with several battalions | Same simulation, player moved up the chain |
+| Time | Continuous, with pause and acceleration; auto-slows on events | A company's life runs from seconds to weeks |
+| Core loop | Continuous time plus a daily orders moment at dawn (optionally dusk): work roster, night patrols, standing instructions, requests to headquarters, with "same as yesterday" defaults. Building projects run for days in the background | Gives quiet weeks real choices and matches how a company was run |
+| Campaign | One company, one position, a season or a full year | Combat sits inside survival, engineering and supply |
+| Scenarios | Standalone set pieces, historical or invented | For example the mining of the Col di Lana summit |
+| Setting | Col di Lana. Modern elevation data shows the April 1916 mine crater, so the summit before the blast is rebuilt by hand | Its rounded shape suits the heightmap; a season of attacks ends in the mine; Monte Sief along the ridge leaves room to grow. Lagazuoi's ledges and overhangs need a far more complex terrain model |
+| Sides | Austria-Hungary first, as the summit defenders; Italy second, built around digging the mine | Defenders live on the mountain all season, so survival, building and the mine dread are the core; one side limits early content work |
+| Soldier model | Medium, built in layers: body (wounds by location, tiredness, cold and frostbite, hunger, illness), mind (morale, shock, one or two traits), abilities (shooting, mountain craft, digging, languages spoken), kit, identity, ties (home village, one close comrade), a short history log. Each build step adds its own part | Real stories without an untunable model. Rule: nothing goes in unless it changes what happens and the player can see it |
+
+## Architecture
+
+The simulation and the presentation are separate programs in one workspace. The simulation never
+asks the renderer for anything.
+
+**Simulation core**
+
+- Plain Rust data, independent of Bevy; each soldier's state follows the soldier model in Agreed
+  decisions.
+- Fixed time step, seeded randomness, and an order log, so every run is reproducible.
+- Runs headless for tests and for fast-forwarding quiet periods.
+
+**Terrain as layers, not voxels**
+
+- A deformable heightmap for the ground, edited by craters and mine explosions.
+- A snow-depth layer on top, which changes movement, concealment and avalanche risk.
+- A separate tunnel and cavern graph underground, shown through a cutaway view.
+- Known limit: a heightmap cannot represent overhangs or cave mouths in cliffs.
+
+**Fields on coarse grids**
+
+- Wind, temperature and precipitation.
+- Gas, which flows downhill and pools in low ground, driven by the wind field.
+- Sound, for detecting enemy digging.
+
+**Performance approach**
+
+- Squads decide and individuals execute.
+- Flow-field pathfinding shared by units with the same destination.
+- A spatial grid for neighbour and line-of-sight queries.
+- Staggered updates: not every soldier thinks every tick.
+- Slow systems such as disease, food and morale drift tick once per game-hour.
+
+**Presentation**
+
+- Chunked terrain mesh with level of detail, a free camera, and instanced unit shapes.
+- A contour overlay and a "what can this observer see" shading mode, because ridges hide units from
+  the camera.
+
+## Command and communications
+
+The simulation keeps ground truth separate from what each commander believes. This is built in from
+the start because it is very hard to add later.
+
+- **Generic hierarchy.** Soldier, squad, platoon, company, battalion, sector. The player can occupy
+  any officer's seat; orders come from above and go below.
+- **One officer AI.** The same system runs enemy officers, the player's subordinates and cut-off
+  units.
+- **Orders and reports are physical.** They travel by runner, telephone wire, signal lamp or pigeon,
+  each with its own delay and failure chance. Lamps need line of sight and clear weather; shelling
+  cuts wire.
+- **The map shows reports, not reality.** Unit markers age and fade until a new report arrives.
+- **Cut-off units act on three inputs:** their last orders, standing instructions set beforehand
+  ("if isolated, hold" or "fall back to the saddle"), and the officer's traits such as initiative,
+  caution and competence. Officers have bounded initiative: within limits set by their traits they
+  may pull back, counter-attack or send for help, and they report what they did and why when contact
+  returns. Standing instructions set how loose the leash is.
+- **Succession.** When an officer is killed, the next in rank takes over with his own traits.
+- **Belief is tracked per officer, not per soldier.**
+
+Realism is a setting, not a design fork. The simulation always runs the full model; the setting
+controls how much truth the interface shows.
+
+| Level | What the player gets |
+| --- | --- |
+| 1 | True positions and instant orders |
+| 2 | True positions, delayed orders |
+| 3 | Delayed orders and delayed, uncertain reports |
+| 4 | The player is at a headquarters on the map and can be cut off |
+
+The default is level 3. Level 4 is offered as the historical setting; revisit once the rough game is
+playable.
+
+## Mechanics in scope
+
+All of these are intended; none is designed in detail yet.
+
+| Mechanic | Design note so far |
+| --- | --- |
+| Terrain | Slope, rock and cover drive movement, line of sight and fire |
+| Weather | Rain, snow, fog, wind and cold affect visibility, movement, signalling and health |
+| Snow cover | A depth layer that accumulates and melts |
+| Avalanches | Both hazard and weapon, tied to snow load, slope and shelling |
+| Artillery | True ballistic arcs against the heightmap, so dead ground and gun type matter |
+| Rock splinters | Shells on rock cause more casualties than on soft ground |
+| Poison gas | Flows downhill, pools in valleys, moved by wind |
+| Terrain change | Craters from shells; large reshaping from underground mines |
+| Tunnels and mines | Digging takes weeks; listening posts hear enemy work; counter-mine or evacuate |
+| Close combat | Raids, trench and cavern fighting |
+| Wounds | Individual wound state, evacuation and recovery |
+| Disease | Slow-ticking, linked to cold, food and shelter |
+| Food and logistics | Cableways, mule tracks and carrying parties; supply can be cut |
+| Morale | Per soldier, shaped by losses, cold, hunger, leadership and isolation |
+| Communications | Telephone wire, runners, lamps, pigeons; see the section above |
+| Individual identity | Names, home villages and histories, for the stories the simulation produces |
+| Building | Huts, caverns, cableways, wire belts and counter-mine tunnels as multi-day projects, set at the daily orders moment; the main activity of quiet weeks |
+
+## Build order
+
+Each step ends in something the director can run and judge.
+
+After every step comes a speed pass on the development PC, the only test machine. With the
+simulation limited to 8 of the PC's 16 threads, placed two to a core on 4 cores, each update must
+use no more than half the time it has, and each frame must finish well inside a limit sized to leave
+room for an RTX 3070 class card. These margins are estimates, not measurements on real target
+hardware.
+
+1. **Pipeline.** Col di Lana terrain on screen, 200 soldiers (as simple shapes) moving across it
+   with correct line of sight, a free camera, the debug overlays, and a replay from a seed. No
+   combat.
+2. **A week on the summit, rough.** The dawn orders screen, work roster, carrying parties, simple
+   cold and hunger, falling snow, and one night raid with basic shooting and a simple enemy officer.
+   The whole game in miniature; crude is fine and is not polished.
+3. **Fire and morale.** Small-arms combat, suppression, cover, and soldiers who break.
+4. **Officer AI.** Enemy and subordinate officers acting on orders, traits and partial knowledge.
+5. **Artillery and craters.** Ballistic fire, observers, terrain deformation.
+6. **Supply and building.** Food, ammunition, carrying parties, cableways, huts, caverns, wire.
+7. **Weather and snow.** Fields, snow layer, cold, avalanches.
+8. **Tunnels and mines.** Digging, listening, counter-mining, the summit explosion.
+9. **Campaign and scenarios.** The season-long game and standalone set pieces. The final screen look
+   is decided before this step.
+10. **Italy and the sector seat.** Italy becomes playable, built around digging the mine; then the
+    player moves up the chain, with the full unit count and a larger map.
+
+Design topics to settle before their step, in this order: fire and morale, officer AI, supply and
+weather.
+
+## Risks and open questions
+
+**Risks**
+
+- **Scope.** The mechanics list is long. The build order is the defence: nothing starts until the
+  step before it is playable.
+- **Officer AI quality.** A subordinate who wastes his men through weak AI reads as a bug. The
+  sector seat depends on this being good. A crude version arrives in step 2 so problems show early.
+- **Engine churn.** Bevy's interface changes between releases. Pin one version and work from that
+  version's documentation.
+- **Readability in 3D.** Terrain hides units. The overlays in the architecture section must arrive
+  with the first milestone.
+- **Two interfaces.** Company and sector seats need different screens, which roughly doubles
+  interface work.
+- **Scale.** Thousands of soldiers on a large map is unproven until the sector step; measure
+  performance from the first milestone.
+
+**Open questions**
+
+- [ ] What did the Col di Lana summit look like before the April 1916 mine? Rebuild it from old
+      photos and maps.
+- [ ] Does Veneto's laser-scan data cover Col di Lana in finer detail than its 10 m terrain grid?
