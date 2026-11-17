@@ -3,7 +3,7 @@
 
 use crate::map_view::MapView;
 use crate::overlays::{OverlaySettings, SpotLines, ViewshedState};
-use crate::sim_link::{ReplayStatus, SPEEDS, SimLink};
+use crate::sim_link::{OnEvent, ReplayStatus, SPEEDS, SimLink};
 use crate::units::Selection;
 use crate::view::ViewMode;
 use alpine_sim::report::morning_report;
@@ -257,6 +257,16 @@ fn panels(
 
     egui::Panel::left("side").default_size(320.0).resizable(true).show(&mut screen, |ui| {
         egui::ScrollArea::vertical().show(ui, |ui| {
+            if link.sim.clock.is_some() {
+                ui.heading("When something happens");
+                ui.small("A new enemy in sight, or a squad you sent arriving or stuck. The skip-ahead always stops.");
+                ui.horizontal(|ui| {
+                    ui.radio_value(&mut link.on_event, OnEvent::Message, "message only");
+                    ui.radio_value(&mut link.on_event, OnEvent::Slow8, "slow to 8x");
+                    ui.radio_value(&mut link.on_event, OnEvent::Slow1, "slow to 1x");
+                });
+                ui.separator();
+            }
             ui.heading("Overlays");
             let o = &mut *overlays;
             ui.checkbox(&mut o.contours, "Contour lines (every 20 m, bold every 100 m)");

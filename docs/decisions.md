@@ -271,10 +271,10 @@ revisited):
   the calendar, so step 1 behaves and checksums exactly as before: its 11 test results are word for
   word the same, and a step-1 replay recorded with the code from before this work
   (`crates/alpine_sim/tests/data/step1_before_step2.ron`) still plays back matching.
-- **Slowing on events.** The brief says time slows on events. A new contact, an arrival or a squad
-  that cannot get there stops the skip-ahead and drops normal play to 1x, with a message naming
-  what happened; first light pauses the game and opens the orders screen. Squads on patrol, and
-  Italian squads' own moves, raise no events.
+- **Slowing on events.** A new contact, an arrival or a squad that cannot get there stops the
+  skip-ahead and shows a message naming what happened; what it does to normal play is the player's
+  choice (decision 38). First light pauses the game and opens the orders screen. Squads on patrol,
+  and Italian squads' own moves, raise no events.
 - **The skip-ahead** runs the simulation flat out for up to 12 ms of real time per drawn frame, so
   the screens stay responsive, and stops on the exact update of the event. It calls the same update
   as normal play (test 20 checks the two give identical state for a whole day).
@@ -292,3 +292,9 @@ revisited):
 - **The speed pass** now measures the step-2 game at noon on Monday (full daylight, where men see
   furthest and sight work is heaviest; every squad moving), and reports how long the skip-ahead
   takes from dusk to first light.
+
+## 2026-11-17 — Step 2: what events do to normal play
+
+| # | Topic | Chosen | Rejected | Why |
+| --- | --- | --- | --- | --- |
+| 38 | What a new contact or an arrival does to normal play | A setting the player chooses in the side panel: only show a message (the default), slow to 8×, or slow to 1×. The skip-ahead always stops, and first light always opens the orders screen | Always dropping to 1× (as first built); always slowing to 8× (Claude's recommendation); slowing only for enemies within some distance | Measured: by day the current patrols give about 20 new sightings per half-day, so dropping to 1× would interrupt play at 64× about every 30 real seconds. Director's choice: let the player decide, and by default do not slow down. Replaces the brief's "auto-slows on events" for normal play; a setting of the screen, not the simulation, so replays are unaffected |

@@ -52,7 +52,7 @@ That makes verification tooling part of the first milestone, not a later extra:
 | Target hardware | Strong gaming PC as the minimum: 8 cores, 32 GB memory, RTX 3070 class graphics | Headroom for soldier count and terrain; a speed pass after every build step keeps it honest |
 | Player seat, first | Company commander on one position, 150 to 250 men | Exercises every mechanic on a small map |
 | Player seat, later | Sector commander with several battalions | Same simulation, player moved up the chain |
-| Time | Continuous, with pause and speeds up to 64×, plus a skip-ahead that runs as fast as the computer can until dawn or until something happens; auto-slows on events | A company's life runs from seconds to weeks: 64× lets a quiet night pass in about 10 minutes while still watchable, and the skip-ahead jumps the dead hours |
+| Time | Continuous, with pause and speeds up to 64×, plus a skip-ahead that runs as fast as the computer can until dawn or until something happens; events show a message, and slow normal play only if the player chooses (decision 38) | A company's life runs from seconds to weeks: 64× lets a quiet night pass in about 10 minutes while still watchable, and the skip-ahead jumps the dead hours |
 | Core loop | Continuous time plus a daily orders moment at dawn (optionally dusk): work roster, night patrols, standing instructions, requests to headquarters, with "same as yesterday" defaults. Building projects run for days in the background. The game stops by itself at first light (dawn: the sun 6° below the horizon, decision 37) and opens the orders screen with a morning report; each part of the screen arrives with the mechanic it orders (decision 32) | Gives quiet weeks real choices and matches how a company was run |
 | Light | Calendar time drives the light: the sun's height (with twilight), the moon's phase and height, starlight, and cloud. The light sets how far a man can be spotted, from 1,500 m by day to about 50 m on a clear moonless night and 15 m under overcast (decisions 33 to 35) | Sightings at night must be believable, in the reports and on the map |
 | Campaign | One company, one position, a season or a full year | Combat sits inside survival, engineering and supply |
@@ -215,7 +215,8 @@ hardware.
      For now the screen holds the date, the weather and a morning report of the last 24 hours, and
      a "Carry on" button (decision 32). The skip-ahead stops at dawn, when our men see an enemy
      squad not seen in the last 30 minutes, and when a squad we ordered arrives or cannot get there
-     (decision 36). Normal play drops to 1× on the same events.
+     (decision 36). In normal play the same events show a message; the player chooses whether
+     they also slow the game, to 8× or to 1×, and by default they do not (decision 38).
    - The light model and the week's cloud come forward from step 7 (decisions 33 and 34): the sun,
      the moon and cloud set the spotting distance. The cloud comes from a weather diary for the
      week, an invented but plausible late-winter week in a readable data file, which the falling

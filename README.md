@@ -39,7 +39,8 @@ M switches between the 3D view and the map. In both, left-click selects a squad,
 ground sends a selected Austro-Hungarian squad there, Space pauses, 1 to 7 set the speed (1x to
 64x), N skips ahead (as fast as the computer can, until first light or until something happens: an
 Italian squad nobody had seen for 30 minutes comes into sight, or a squad you sent arrives or cannot
-get there; normal play also drops to 1x on these), F5 saves a replay into `replays/`, and the panel
+get there; in normal play these show a message, and the side panel's "When something happens"
+setting can make them slow the game to 8x or 1x as well), F5 saves a replay into `replays/`, and the panel
 on the left switches the overlays.
 
 - 3D view: W A S D move, Q / E down / up, Shift faster, mouse wheel changes camera speed, hold the

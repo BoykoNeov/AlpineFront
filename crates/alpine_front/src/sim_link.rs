@@ -17,6 +17,30 @@ pub const SPEEDS: [u32; 7] = [1, 2, 4, 8, 16, 32, 64];
 /// responsive while it runs.
 const SKIP_BUDGET_MS: f64 = 12.0;
 
+/// What a new contact or an arrival does to normal play: the player's choice (decision 38).
+/// The skip-ahead always stops.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum OnEvent {
+    /// Only show a message.
+    #[default]
+    Message,
+    /// Slow to 8x (if faster).
+    Slow8,
+    /// Slow to 1x.
+    Slow1,
+}
+
+impl OnEvent {
+    /// The fastest speed allowed right after an event.
+    fn speed_cap(self) -> u32 {
+        match self {
+            OnEvent::Message => u32::MAX,
+            OnEvent::Slow8 => 8,
+            OnEvent::Slow1 => 1,
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum ReplayStatus {
     /// Every checksum so far matched the recording.
@@ -64,6 +88,8 @@ pub struct SimLink {
     pub dawn_screen: bool,
     /// Automatic runs (autoplay, the frame check) carry on at dawn by themselves.
     pub auto_carry_on: bool,
+    /// What events do to normal play.
+    pub on_event: OnEvent,
 }
 
 impl SimLink {
@@ -134,6 +160,7 @@ impl SimLink {
             skipping: false,
             dawn_screen,
             auto_carry_on,
+            on_event: OnEvent::default(),
         })
     }
 
@@ -159,9 +186,10 @@ impl SimLink {
         }
     }
 
-    /// Reacts to the events of the latest update (decision 36): dawn opens the orders screen;
-    /// a new contact or an arrival stops the skip-ahead and slows the game to 1x. Returns whether
-    /// time should stop running this frame.
+    /// Reacts to the events of the latest update (decisions 36 and 38): dawn opens the orders
+    /// screen; a new contact or an arrival stops the skip-ahead, shows a message, and slows normal
+    /// play if the player chose so. Returns whether the game's pace changed (so the frame's run of
+    /// updates should end here).
     fn react(&mut self, events: &[Event]) -> bool {
         let mut stop = false;
         for e in events {
@@ -190,11 +218,19 @@ impl SimLink {
             if self.auto_carry_on {
                 continue;
             }
-            let slowed = self.skipping || self.speed > 1;
+            let was_skipping = self.skipping;
             self.skipping = false;
-            self.speed = 1;
-            self.last_message = Some(if slowed { format!("{what} Slowed to 1x.") } else { what });
-            stop = true;
+            let cap = self.on_event.speed_cap();
+            let slowed = self.speed > cap;
+            if slowed {
+                self.speed = cap;
+            }
+            self.last_message = Some(match (was_skipping, slowed) {
+                (_, true) => format!("{what} Slowed to {cap}x."),
+                (true, false) => format!("{what} Skip-ahead stopped."),
+                (false, false) => what,
+            });
+            stop |= was_skipping || slowed;
         }
         stop
     }
