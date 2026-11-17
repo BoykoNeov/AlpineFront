@@ -58,8 +58,7 @@ Step 1 result (2026-11-17): passed in three runs. Slowest simulation update 1.7 
 With the map (2026-11-17): passed. Slowest simulation update 1.4 ms; 99% of frames within 8.6 ms in
 both the 3D view and the map.
 
-`ALPINE_CLICK_CHECK=1 target
-eleaselpine_front.exe --view map` (or `--view terrain`) checks that a
+`ALPINE_CLICK_CHECK=1 target\release\alpine_front.exe --view map` (or `--view terrain`) checks that a
 view can be played: it clicks a squad, orders it, on the map also zooms with the wheel, moves the
 map with W and by right-dragging, then switches views with M, and reports PASS or FAIL.
 
