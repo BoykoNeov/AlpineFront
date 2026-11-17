@@ -192,3 +192,25 @@ At 16×, the top speed through step 1, one game week takes about 10½ real hours
 | --- | --- | --- | --- | --- |
 | 29 | Speeding up quiet stretches | Normal speeds up to 64×, plus a skip-ahead that runs as fast as the computer can until dawn or until something happens, slowing on events. The speed check holds 64× to its limit; the skip-ahead's speed is reported for information | One high top speed of a few hundred × with no skip (the speed check would first need the occasional slow update while squads plan routes fixed); keeping 16× and adding only the skip (nothing between watching and jumping) | 64× lets a quiet night pass in about 10 minutes while still watchable; the skip-ahead jumps dead hours without making every update meet a much tighter limit. Replaces decision 17's step-1 bar. The skip-ahead is built with the dawn orders screen, which brings the game clock and the events it stops on. Measured afterwards: 64× also failed at first on the route waits, which the rejected option's note had blamed only on the higher speed; see decision 30 |
 | 30 | How the speed check judges the simulation at 64× | The squad leader's planning pause after an order goes from 1 to 4 game seconds, and the check judges each frame's batch of updates (the updates falling in each 1/60 s of real time must take at most 8.3 ms together); single slow updates are reported, not failed | Keeping the per-update rule and tracking down the last slow updates (unknown effort; they may be Windows hiccups on a busy machine); dropping the top speed to 32× (passes only narrowly; a quiet night takes 20 minutes) | At 64× each update has 0.78 ms. With the 1 s pause, long routes (up to 40 ms of work) were not ready when needed and the game stalled; 4 s gives them about 60 ms of real time at 64×, and removed every stall in the test. Nine updates of about 1 to 1.3 ms remained; at 64× the game runs about 10 updates per frame drawn, so one of them among ten 0.1 ms updates cannot be seen. A real stutter still fails. Same idea as decision 20: measure what the player feels. A 4 s pause is also closer to a leader taking stock before moving off |
+
+## 2026-11-17 — Step 2: the week
+
+| # | Topic | Chosen | Rejected | Why |
+| --- | --- | --- | --- | --- |
+| 31 | When the step-2 week is set | Monday 6 to Sunday 12 March 1916 | Autumn 1915 (the big Italian attacks lean on combat that arrives only in step 3); summer 1915 (no falling snow, which step 2 includes; short nights for the raid) | Late winter exercises every step-2 item: cold, hunger, falling snow, carrying parties through snow and a long night for the raid. The Italians had been tunnelling toward the summit since mid-January, so the dread the brief puts at the core is already present. Cold and hunger get tuned at their hardest first |
+
+Worked out for the brief (Claude's work, recorded so it can be revisited):
+
+- **Daylight.** Sunrise and sunset on the summit (46.50° N, 11.96° E) from the standard solar
+  formula, for a flat horizon: about 06:42 and 18:05 on 6 March, 06:31 and 18:13 on 12 March. Times
+  are Central European Time; Austria-Hungary began summer time only at the end of April 1916.
+  Surrounding peaks will delay the first direct sun; that is not modelled.
+- **Exact dates.** A Monday-to-Sunday week in early March, about five weeks before the mine. The
+  director can move it; only the daylight figures change.
+
+### Sources used
+
+- [The mine placed under Col di Lana (Turismo FVG)](https://www.turismofvg.it/en/108650/the-mine-placed-under-col-di-lana)
+  — the decision to mine the summit, January 1916
+- [Peppino's battle for Col di Lana (History of War, via PressReader)](https://www.pressreader.com/uk/history-of-war/20180614/282621738408331)
+  — tunnelling began in mid-January 1916

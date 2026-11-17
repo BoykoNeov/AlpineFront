@@ -210,6 +210,10 @@ hardware.
    Then the dawn orders screen, work roster, carrying parties, simple
    cold and hunger, falling snow, and one night raid with basic shooting and a simple enemy officer.
    The whole game in miniature; crude is fine and is not polished.
+   - The week is Monday 6 to Sunday 12 March 1916 (decision 31): deep snow and hard cold, the
+     Italians tunnelling toward the summit since mid-January. On the summit the sun rises at about
+     06:40 and sets at about 18:10 (Central European Time, before summer time began that April), so
+     nights last about 12½ hours.
 3. **Fire and morale.** Small-arms combat, suppression, cover, and soldiers who break.
 4. **Officer AI.** Enemy and subordinate officers acting on orders, traits and partial knowledge.
 5. **Artillery and craters.** Ballistic fire, observers, terrain deformation.
