@@ -1,21 +1,72 @@
 //! Starting situations.
 
-use crate::sim::{PatrolZone, Side, Sim};
+use crate::sim::{Event, LoggedEvent, PatrolZone, Side, Sim};
+use crate::sky::{Calendar, DateTime};
 use crate::terrain::Terrain;
 use crate::tuning::Tuning;
+use crate::weather::Weather;
 use std::sync::Arc;
 
 /// Names of the scenarios a replay can refer to.
 pub const STEP1: &str = "step1";
 /// Step 1 with every squad, Austrian too, wandering on seeded random orders.
 pub const STEP1_AUTOPLAY: &str = "step1-autoplay";
+/// Step 2: the step-1 troops on the calendar, opening at first light on Monday 6 March 1916.
+pub const STEP2: &str = "step2";
+/// Step 2 with every squad, Austrian too, wandering on seeded random orders.
+pub const STEP2_AUTOPLAY: &str = "step2-autoplay";
 
-pub fn build(name: &str, terrain: Arc<Terrain>, tuning: Tuning, seed: u64, pool: Arc<rayon::ThreadPool>) -> Option<Sim> {
+/// Whether a scenario uses the weather diary (and so needs its text, e.g. in a replay).
+pub fn uses_weather(name: &str) -> bool {
+    name == STEP2 || name == STEP2_AUTOPLAY
+}
+
+/// Builds a named scenario. `weather_toml` is the weather diary's text (ignored by step 1).
+pub fn build(
+    name: &str,
+    terrain: Arc<Terrain>,
+    tuning: Tuning,
+    seed: u64,
+    pool: Arc<rayon::ThreadPool>,
+    weather_toml: &str,
+) -> Result<Sim, String> {
     match name {
-        STEP1 => Some(step1(terrain, tuning, seed, pool, false)),
-        STEP1_AUTOPLAY => Some(step1(terrain, tuning, seed, pool, true)),
-        _ => None,
+        STEP1 => Ok(step1(terrain, tuning, seed, pool, false)),
+        STEP1_AUTOPLAY => Ok(step1(terrain, tuning, seed, pool, true)),
+        STEP2 | STEP2_AUTOPLAY => {
+            let weather = Weather::from_toml(weather_toml)?;
+            step2(terrain, tuning, seed, pool, name == STEP2_AUTOPLAY, weather)
+        }
+        _ => Err(format!("unknown scenario '{name}'")),
     }
+}
+
+/// The step-2 calendar: Col di Lana, Central European Time, starting at first light (dawn) on the
+/// tuning's first day.
+pub fn step2_calendar(terrain: &Terrain, tuning: &Tuning) -> Result<Calendar, String> {
+    let first = DateTime::parse(&format!("{} 00:00", tuning.scenario.step2_first_day))?;
+    // The summit's position if the map gives it (it does), else the summit's published position.
+    let (latitude, longitude) = terrain.centre_lat_lon.unwrap_or((46.50, 11.96));
+    let mut cal = Calendar { latitude, longitude, utc_offset_h: 1.0, start: first.to_seconds() };
+    cal.start = cal.first_light_on(cal.start).ok_or("no first light on the first day")?;
+    Ok(cal)
+}
+
+/// Build step 2: the step-1 troops on the calendar. The game opens at first light on the first day,
+/// which counts as that morning's dawn.
+pub fn step2(
+    terrain: Arc<Terrain>,
+    tuning: Tuning,
+    seed: u64,
+    pool: Arc<rayon::ThreadPool>,
+    autoplay: bool,
+    weather: Weather,
+) -> Result<Sim, String> {
+    let cal = step2_calendar(&terrain, &tuning)?;
+    let mut sim = step1(terrain, tuning, seed, pool, autoplay);
+    sim.set_clock(cal, weather);
+    sim.journal.push(LoggedEvent { tick: 0, event: Event::Dawn { day: 0 } });
+    Ok(sim)
 }
 
 /// Picks a random point in a ring around the summit that is on the main walkable ground.

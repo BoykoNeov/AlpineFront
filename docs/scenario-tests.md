@@ -37,3 +37,28 @@ the affected tests back to the director for re-approval before changing anything
 Director's notes on approval: soldiers will later be able to climb steeper ground given equipment,
 skill and suitable conditions, or by building via ferratas, so the 45° limit is a step-1
 simplification. Line of sight and the spotting range here assume good weather.
+
+The step-1 tests run without a calendar, which means in daylight: the spotting distance is the
+fixed 1,500 m from the tuning file, whatever the clock says.
+
+## Step 2: the dawn orders screen, night and the skip-ahead (approved 2026-11-17)
+
+Times are Central European Time. "Dusk" means the end of civil twilight and "dawn" or "first
+light" its start in the morning (the sun 6° below the horizon), the standard definitions.
+
+| # | Expectation |
+| --- | --- |
+| 12 | **Calendar and dawn.** The step-2 game opens at first light on Monday 6 March 1916. The orders moment comes at first light every morning: 06:12 on Monday down to 06:01 on Sunday, each within 2 minutes. *(Changed from sunrise, 06:42 to 06:31, with the director's approval on 2026-11-17: decision 37.)* |
+| 13 | **Moon.** Moonset on the night of 10 to 11 March falls within 15 minutes of 01:42 (the independent table for Telve); the moon is 40 to 60% lit on 11 March. |
+| 14 | **Clear, moonless night.** At 03:00 on a clear night with the moon down, an enemy in plain sight 40 m away is spotted within 2 game seconds; one 80 m away is not spotted in 5 game minutes. |
+| 15 | **Overcast, moonless night.** As test 14 under full overcast: spotted at 10 m, not at 30 m. |
+| 16 | **Daylight unchanged.** At noon on a clear day the spotting distance is still 1,500 m: the Monte Sief and Settsass checks of tests 4 and 5 hold in step-2 conditions. |
+| 17 | **Twilight is gradual.** From sunset to full night the spotting distance never changes by more than 10% in one game minute. |
+| 18 | **Skip stops at dawn.** Started at dusk on any night of the week, the skip-ahead stops on the exact update of the next dawn. With the current Italian patrols (1 km and more away) no night is interrupted. |
+| 19 | **Skip stops on events.** By day it stops on the update in which our men see an Italian squad not seen in the past 30 minutes, and when an ordered squad arrives or cannot get there. |
+| 20 | **Skipping changes nothing.** A day played at normal speed and the same day crossed with the skip-ahead, with the same orders, give identical state, compared every update. |
+| 21 | **Step 1 unchanged.** Without a calendar the simulation is exactly as before: tests 1 to 11 unchanged, and a step-1 replay saved before this work still plays back matching. |
+
+Run them with `cargo test --release -p alpine_sim --test step2` (about 3 minutes). Tests 14 to 16
+set the cloud themselves; the other step-2 tests use the week's weather diary
+(`data/weather/march_1916.toml`).

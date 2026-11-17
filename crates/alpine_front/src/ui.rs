@@ -1,12 +1,14 @@
-//! Screens (egui): time controls, the view switch, overlay switches, the selected squad, replays,
-//! help, and the map's scale bar.
+//! Screens (egui): the clock and time controls (with the skip-ahead), the dawn orders screen, the
+//! view switch, overlay switches, the selected squad, replays, help, and the map's scale bar.
 
 use crate::map_view::MapView;
 use crate::overlays::{OverlaySettings, SpotLines, ViewshedState};
 use crate::sim_link::{ReplayStatus, SPEEDS, SimLink};
 use crate::units::Selection;
 use crate::view::ViewMode;
-use alpine_sim::sim::{Side, SquadState};
+use alpine_sim::report::morning_report;
+use alpine_sim::sim::{Side, Sim, SquadState};
+use alpine_sim::sky;
 use bevy::diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin};
 use bevy::prelude::*;
 use bevy_egui::input::EguiWantsInput;
@@ -27,7 +29,7 @@ fn clock(seconds: f64) -> String {
     format!("{}:{:02}:{:02}", s / 3600, (s / 60) % 60, s % 60)
 }
 
-fn shortcuts(
+pub fn shortcuts(
     keys: Res<ButtonInput<KeyCode>>,
     egui: Res<EguiWantsInput>,
     mut link: ResMut<SimLink>,
@@ -36,8 +38,21 @@ fn shortcuts(
     if egui.wants_any_keyboard_input() {
         return;
     }
+    if link.dawn_screen {
+        // The orders screen waits for "Carry on"; time stays stopped until then.
+        if keys.just_pressed(KeyCode::Enter) || keys.just_pressed(KeyCode::NumpadEnter) {
+            link.carry_on();
+        }
+        if keys.just_pressed(KeyCode::F5) {
+            save(&mut link);
+        }
+        return;
+    }
     if keys.just_pressed(KeyCode::Space) {
         link.paused = !link.paused;
+    }
+    if keys.just_pressed(KeyCode::KeyN) {
+        link.toggle_skip();
     }
     let digits = [
         KeyCode::Digit1,
@@ -52,6 +67,7 @@ fn shortcuts(
         if keys.just_pressed(*k) {
             link.speed = s;
             link.paused = false;
+            link.skipping = false;
         }
     }
     if keys.just_pressed(KeyCode::Escape) {
@@ -108,6 +124,66 @@ fn scale_bar(ctx: &egui::Context, metres_per_px: f32) {
         });
 }
 
+/// "Mon 6 Mar 1916 06:42, night, overcast, seeing 15 m" with a calendar; the game time without.
+fn clock_text(sim: &Sim) -> String {
+    match (sim.now(), &sim.clock) {
+        (Some(now), Some(c)) => {
+            let sun = c.sky.sun_altitude_deg;
+            let light = if sun >= 0.0 {
+                "day"
+            } else if sun >= sky::DUSK_ALTITUDE_DEG {
+                "twilight"
+            } else {
+                "night"
+            };
+            format!(
+                "{} {}, {light}, {}, seeing {:.0} m",
+                now.short_date(),
+                now.hhmm(),
+                sky::cloud_words(c.sky.cloud),
+                sim.spotting_range
+            )
+        }
+        _ => format!("Game time {}", clock(sim.game_seconds())),
+    }
+}
+
+/// The dawn orders screen (decision 32): the morning report and "Carry on".
+fn dawn_window(ctx: &egui::Context, link: &mut SimLink) {
+    let Some(report) = morning_report(&link.sim) else {
+        link.carry_on();
+        return;
+    };
+    let mut carry_on = false;
+    egui::Window::new("Orders at dawn")
+        .collapsible(false)
+        .resizable(false)
+        .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
+        .default_width(520.0)
+        .show(ctx, |ui| {
+            ui.heading(&report.title);
+            ui.add_space(4.0);
+            for line in &report.weather {
+                ui.label(line);
+            }
+            ui.separator();
+            ui.strong("Morning report");
+            for line in &report.events {
+                ui.label(line);
+            }
+            ui.separator();
+            ui.horizontal(|ui| {
+                if ui.button("Carry on (Enter)").clicked() {
+                    carry_on = true;
+                }
+                ui.small("Time stays stopped until you carry on.");
+            });
+        });
+    if carry_on {
+        link.carry_on();
+    }
+}
+
 #[allow(clippy::too_many_arguments)] // a Bevy system: each argument is a piece of game state it reads
 fn panels(
     mut contexts: EguiContexts,
@@ -141,18 +217,31 @@ fn panels(
             }
             ui.label("(M)");
             ui.separator();
-            ui.label(format!("Game time {}", clock(link.sim.game_seconds())));
+            ui.label(clock_text(&link.sim));
             ui.separator();
             let paused = link.paused;
-            if ui.selectable_label(paused, "Pause").clicked() {
-                link.paused = !paused;
-            }
-            for s in SPEEDS {
-                if ui.selectable_label(!paused && link.speed == s, format!("{s}x")).clicked() {
-                    link.speed = s;
-                    link.paused = false;
+            let skipping = link.skipping;
+            let waiting = link.dawn_screen;
+            ui.add_enabled_ui(!waiting, |ui| {
+                if ui.selectable_label(paused, "Pause").clicked() {
+                    link.paused = !paused;
                 }
-            }
+                for s in SPEEDS {
+                    if ui.selectable_label(!paused && !skipping && link.speed == s, format!("{s}x")).clicked() {
+                        link.speed = s;
+                        link.paused = false;
+                        link.skipping = false;
+                    }
+                }
+                if link.sim.clock.is_some()
+                    && ui
+                        .selectable_label(skipping && !paused, "Skip ahead (N)")
+                        .on_hover_text("Run as fast as the computer can until dawn, or until something happens")
+                        .clicked()
+                {
+                    link.toggle_skip();
+                }
+            });
             ui.separator();
             ui.label(format!(
                 "Simulation {:.0}% of each frame (worst {:.0}%; limit 50%); update {:.2} ms (worst {:.2})",
@@ -172,7 +261,7 @@ fn panels(
             let o = &mut *overlays;
             ui.checkbox(&mut o.contours, "Contour lines (every 20 m, bold every 100 m)");
             ui.checkbox(&mut o.steep, format!("Ground too steep to walk (over {:.0} degrees)", link.sim.tuning.walking.steepest_walkable_deg));
-            ui.checkbox(&mut o.viewshed, format!("What the selected man can see (within {:.0} m)", link.sim.tuning.spotting.spotting_range_m));
+            ui.checkbox(&mut o.viewshed, format!("What the selected man can see (within {:.0} m in this light)", link.sim.spotting_range));
             if o.viewshed {
                 ui.small(if selection.soldier.is_some() {
                     format!("Gold = a standing man there would be in view; blue = hidden. Took {:.0} ms.", viewshed.last_ms)
@@ -296,12 +385,18 @@ fn panels(
                 }
                 ui.label("Right-click the ground: send the selected squad there");
                 ui.label("Space: pause    1 to 7: speed 1x to 64x    F5: save replay");
+                if link.sim.clock.is_some() {
+                    ui.label("N: skip ahead to dawn or the next event    Enter: carry on at dawn");
+                }
                 ui.label("M: switch between the 3D view and the map");
             });
         });
     });
     if *mode == ViewMode::Map {
         scale_bar(ctx, map.scale);
+    }
+    if link.dawn_screen {
+        dawn_window(ctx, &mut link);
     }
     Ok(())
 }

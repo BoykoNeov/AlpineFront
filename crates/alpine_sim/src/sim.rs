@@ -1,13 +1,20 @@
 //! The simulation: soldiers, squads, orders, and the fixed update order.
 //!
 //! Every update (tick) runs these stages in this order:
+//! 0. with a calendar (step 2 on): the clock moves on, the light and spotting distance are worked
+//!    out for the new moment, and dawn and dusk are noted;
 //! 1. orders scheduled for this tick are given to their squads;
 //! 2. patrolling squads that have waited long enough pick a new destination;
 //! 3. squads whose route is ready start moving;
 //! 4. every soldier moves (split across threads; each man reads only the previous state);
 //! 5. squads whose men have all arrived are marked arrived;
 //! 6. the soldiers due to look around this tick check which enemies they can see (split across
-//!    threads).
+//!    threads);
+//! 7. with a calendar: enemy squads our men see that nobody had seen for a while are noted as new
+//!    contacts.
+//!
+//! Events (dawn, new contacts, arrivals) are only noted with a calendar, so a scenario without one
+//! (step 1) behaves, and checksums, exactly as before.
 //!
 //! Randomness comes only from the seeded generator, used only on the main thread, in squad order.
 //! Parallel work is collected back in soldier order, so 1 thread or 8 give the same result.
@@ -16,9 +23,11 @@ use crate::flow::FlowField;
 use crate::hash::Checksum;
 use crate::los::{self, LosParams};
 use crate::rng::Rng;
+use crate::sky::{self, Calendar, SkyState};
 use crate::spatial::SpatialGrid;
 use crate::terrain::Terrain;
 use crate::tuning::Tuning;
+use crate::weather::Weather;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, VecDeque};
@@ -46,6 +55,49 @@ impl Side {
             Side::Italy => "Italian",
         }
     }
+}
+
+/// The side the player commands.
+pub const PLAYER_SIDE: Side = Side::Austria;
+
+/// Something that happened, worth telling the player (and stopping the skip-ahead for).
+#[derive(Clone, Debug, PartialEq)]
+pub enum Event {
+    /// First light: the daily orders moment (decision 37). Day 0 is the morning the game opens.
+    Dawn { day: u32 },
+    /// The end of civil twilight.
+    Dusk,
+    /// Our men see an enemy squad that nobody had seen for a while.
+    Contact { enemy_squad: u32, seen_by_squad: u32, distance_m: f32 },
+    /// A squad the player ordered has arrived.
+    Arrived { squad: u32 },
+    /// A squad the player ordered cannot get where it was sent.
+    Unreachable { squad: u32 },
+}
+
+impl Event {
+    /// Whether this event stops the skip-ahead and slows normal play (decision 36).
+    pub fn stops_time(&self) -> bool {
+        !matches!(self, Event::Dusk)
+    }
+}
+
+/// An event and the update after which it was noted (the simulation's `tick` once that update ran).
+#[derive(Clone, Debug, PartialEq)]
+pub struct LoggedEvent {
+    pub tick: u64,
+    pub event: Event,
+}
+
+/// The game clock and the sky (scenarios with a calendar only).
+#[derive(Clone, Debug)]
+pub struct Clock {
+    pub calendar: Calendar,
+    pub weather: Weather,
+    /// The sky at the current moment.
+    pub sky: SkyState,
+    /// Mornings that have begun since the game opened (0 on the first morning).
+    pub day: u32,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -113,6 +165,8 @@ pub struct Squad {
     pub arrived_tick: Option<u64>,
     pub patrol: Option<PatrolZone>,
     pub next_patrol_tick: u64,
+    /// When one of the player's men last saw a man of this squad (enemy squads only).
+    pub last_seen_by_player: Option<u64>,
 }
 
 /// A route calculation running on a worker thread.
@@ -151,6 +205,14 @@ pub struct Sim {
     pub squads: Vec<Squad>,
     /// Every order given from outside, with the tick it took effect: the replay's order log.
     pub order_log: Vec<LoggedOrder>,
+    /// The calendar and sky, for scenarios that have one (step 2 on).
+    pub clock: Option<Clock>,
+    /// How far a man can be spotted right now (the tuning's daylight distance without a calendar).
+    pub spotting_range: f32,
+    /// Events noted during the latest update.
+    pub events: Vec<Event>,
+    /// Every event since the start, in order.
+    pub journal: Vec<LoggedEvent>,
     rng: Rng,
     pool: Arc<rayon::ThreadPool>,
     scheduled: VecDeque<LoggedOrder>,
@@ -185,6 +247,10 @@ impl Sim {
         Sim {
             tick: 0,
             seed,
+            clock: None,
+            spotting_range: tuning.spotting.spotting_range_m,
+            events: Vec::new(),
+            journal: Vec::new(),
             los: LosParams::from_tuning(&tuning.line_of_sight),
             terrain,
             tuning,
@@ -199,6 +265,28 @@ impl Sim {
             by_side: [Vec::new(), Vec::new()],
             formation,
         }
+    }
+
+    /// Puts the simulation on the calendar: update 0 is the calendar's start. The light, and with it
+    /// the spotting distance, follow the sun, the moon and the weather from now on.
+    pub fn set_clock(&mut self, calendar: Calendar, weather: Weather) {
+        let t = calendar.start;
+        let sky = calendar.sky(t, weather.cloud_at(t), &self.tuning.light);
+        self.clock = Some(Clock { calendar, weather, sky, day: 0 });
+        self.spotting_range = sky::spotting_distance(sky.lux, &self.tuning.light, self.tuning.spotting.spotting_range_m);
+    }
+
+    /// Notes an event as having happened in the update now running.
+    fn note(&mut self, event: Event) {
+        self.journal.push(LoggedEvent { tick: self.tick + 1, event: event.clone() });
+        self.events.push(event);
+    }
+
+    /// Whether events about this squad are worth telling the player: one of his own, under his
+    /// orders rather than wandering on a patrol, in a game with a calendar.
+    fn player_ordered(&self, squad: u32) -> bool {
+        let q = &self.squads[squad as usize];
+        self.clock.is_some() && q.side == PLAYER_SIDE && q.patrol.is_none()
     }
 
     pub fn rng(&mut self) -> &mut Rng {
@@ -245,6 +333,7 @@ impl Sim {
             arrived_tick: None,
             patrol: None,
             next_patrol_tick: u64::MAX,
+            last_seen_by_player: None,
         });
         self.grid.rebuild(self.soldiers.iter().map(|s| (s.x, s.y)));
         sid
@@ -346,6 +435,9 @@ impl Sim {
         let Some(dp) = dp else {
             sq.state = SquadState::Unreachable;
             sq.dest = None;
+            if self.player_ordered(squad) {
+                self.note(Event::Unreachable { squad });
+            }
             return;
         };
         sq.dest_point = Some(dp);
@@ -371,6 +463,9 @@ impl Sim {
         if !reachable {
             let sq = &mut self.squads[squad as usize];
             sq.state = SquadState::Unreachable;
+            if self.player_ordered(squad) {
+                self.note(Event::Unreachable { squad });
+            }
             return;
         }
         let slots = self.formation_around(dx, dy, members.len());
@@ -414,6 +509,24 @@ impl Sim {
     /// Advances the simulation by one tick.
     pub fn step(&mut self) {
         let tick = self.tick;
+        self.events.clear();
+
+        // 0. The clock and the light, for the moment this update ends at.
+        if let Some(c) = &self.clock {
+            let t = c.calendar.local_seconds((tick + 1) as f64 * self.tuning.dt() as f64);
+            let before = c.sky.sun_altitude_deg;
+            let sky = c.calendar.sky(t, c.weather.cloud_at(t), &self.tuning.light);
+            self.spotting_range = sky::spotting_distance(sky.lux, &self.tuning.light, self.tuning.spotting.spotting_range_m);
+            let c = self.clock.as_mut().unwrap();
+            c.sky = sky;
+            if before < sky::DAWN_ALTITUDE_DEG && sky.sun_altitude_deg >= sky::DAWN_ALTITUDE_DEG {
+                c.day += 1;
+                let day = c.day;
+                self.note(Event::Dawn { day });
+            } else if before > sky::DUSK_ALTITUDE_DEG && sky.sun_altitude_deg <= sky::DUSK_ALTITUDE_DEG {
+                self.note(Event::Dusk);
+            }
+        }
 
         // 1. Orders.
         while self.scheduled.front().is_some_and(|o| o.tick == tick) {
@@ -494,6 +607,9 @@ impl Sim {
                     let p = self.patrol_pause_ticks();
                     self.squads[i].next_patrol_tick = tick + p;
                 }
+                if self.player_ordered(i as u32) {
+                    self.note(Event::Arrived { squad: i as u32 });
+                }
             }
         }
 
@@ -509,7 +625,64 @@ impl Sim {
             self.soldiers[i as usize].sees = v;
         }
 
+        // 7. New contacts.
+        if self.clock.is_some() {
+            self.note_contacts(tick);
+        }
+
         self.tick += 1;
+    }
+
+    /// The skip-ahead (decision 29): runs updates while `more` allows, stopping after the first
+    /// update that notes an event that stops time (dawn, a new contact, an arrival), whose events it
+    /// returns. `after` runs after every update (for recording a replay, say). Running updates this
+    /// way or one at a time gives exactly the same result.
+    pub fn skip(&mut self, mut more: impl FnMut(&Sim) -> bool, mut after: impl FnMut(&Sim)) -> Option<Vec<Event>> {
+        while more(self) {
+            self.step();
+            after(self);
+            if self.events.iter().any(Event::stops_time) {
+                return Some(self.events.clone());
+            }
+        }
+        None
+    }
+
+    /// Notes every enemy squad the player's men see now that none of them had seen for the tuning's
+    /// while (or ever) as a new contact, with the nearest of our squads seeing it.
+    fn note_contacts(&mut self, tick: u64) {
+        let gap = self.tuning.seconds_to_ticks(self.tuning.events.new_contact_after_unseen_minutes * 60.0);
+        // Per enemy squad seen: (distance, our squad) of the nearest sighting.
+        let mut nearest: BTreeMap<u32, (f32, u32)> = BTreeMap::new();
+        for &i in &self.by_side[PLAYER_SIDE.index()] {
+            let s = &self.soldiers[i as usize];
+            for &e in &s.sees {
+                let en = &self.soldiers[e as usize];
+                let d = ((en.x - s.x).powi(2) + (en.y - s.y).powi(2)).sqrt();
+                let entry = nearest.entry(en.squad).or_insert((f32::INFINITY, s.squad));
+                if d < entry.0 {
+                    *entry = (d, s.squad);
+                }
+            }
+        }
+        for (q, (d, by)) in nearest {
+            let new = self.squads[q as usize].last_seen_by_player.is_none_or(|t| tick - t > gap);
+            self.squads[q as usize].last_seen_by_player = Some(tick);
+            if new {
+                self.note(Event::Contact { enemy_squad: q, seen_by_squad: by, distance_m: d });
+            }
+        }
+    }
+
+    /// The local date and time now, with a calendar.
+    pub fn now(&self) -> Option<sky::DateTime> {
+        self.clock.as_ref().map(|c| c.calendar.now(self.game_seconds()))
+    }
+
+    /// The local date and time after update `tick`, with a calendar.
+    pub fn time_at(&self, tick: u64) -> Option<sky::DateTime> {
+        let dt = self.tuning.dt() as f64;
+        self.clock.as_ref().map(|c| c.calendar.now(tick as f64 * dt))
     }
 
     /// Enemies soldier `i` can see right now, within spotting range.
@@ -517,7 +690,7 @@ impl Sim {
         let o = &self.soldiers[i as usize];
         let t = &self.terrain;
         let eye = [o.x, o.y, t.height(o.x, o.y) + self.tuning.soldier.eye_height_m];
-        let range2 = self.tuning.spotting.spotting_range_m.powi(2);
+        let range2 = self.spotting_range.powi(2);
         let head = self.tuning.soldier.head_height_m;
         self.by_side[o.side.enemy().index()]
             .iter()
@@ -579,6 +752,16 @@ impl Sim {
             if let Some((x, y)) = q.dest {
                 h.f32(x);
                 h.f32(y);
+            }
+        }
+        // Only with a calendar, so step 1's checksums are exactly what they were.
+        if let Some(c) = &self.clock {
+            h.u32(c.day);
+            h.u64(c.sky.lux.to_bits());
+            h.f32(self.spotting_range);
+            h.u64(self.journal.len() as u64);
+            for q in &self.squads {
+                h.u64(q.last_seen_by_player.unwrap_or(u64::MAX));
             }
         }
         h.finish()

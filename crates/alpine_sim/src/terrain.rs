@@ -21,6 +21,8 @@ struct TerrainMeta {
     columns: usize,
     rows: usize,
     spacing_m: f32,
+    south_west_latitude: Option<f64>,
+    south_west_longitude: Option<f64>,
 }
 
 pub struct Terrain {
@@ -32,6 +34,8 @@ pub struct Terrain {
     pub origin_y: f32,
     pub heights: Vec<f32>,
     pub steepest_walkable_deg: f32,
+    /// Latitude and longitude of the map centre, if the map file gives its position.
+    pub centre_lat_lon: Option<(f64, f64)>,
     /// Per cell: bit 0 = lower triangle walkable, bit 1 = upper triangle walkable.
     tri_walkable: Vec<u8>,
     /// Per grid point: bit k = the edge to NEIGHBOURS[k] can be walked along.
@@ -67,6 +71,13 @@ impl Terrain {
         let heights = bytes.as_chunks::<4>().0.iter().map(|b| f32::from_le_bytes(*b)).collect();
         let mut t = Terrain::from_heights(meta.columns, meta.rows, meta.spacing_m, heights, steepest_walkable_deg);
         t.name = meta.name;
+        if let (Some(lat), Some(lon)) = (meta.south_west_latitude, meta.south_west_longitude) {
+            // Half the map north and east of the south-west corner (metres per degree at this latitude).
+            let half = -t.origin_x as f64;
+            let lat_c = lat + half / 111_132.0;
+            let lon_c = lon + half / (111_320.0 * lat_c.to_radians().cos());
+            t.centre_lat_lon = Some((lat_c, lon_c));
+        }
         Ok(t)
     }
 
@@ -94,6 +105,7 @@ impl Terrain {
             origin_y: -((rows - 1) as f32) * spacing / 2.0,
             heights,
             steepest_walkable_deg,
+            centre_lat_lon: None,
             tri_walkable: Vec::new(),
             edge_pass: Vec::new(),
             component: Vec::new(),

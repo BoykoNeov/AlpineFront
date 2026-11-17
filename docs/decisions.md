@@ -214,3 +214,80 @@ Worked out for the brief (Claude's work, recorded so it can be revisited):
   — the decision to mine the summit, January 1916
 - [Peppino's battle for Col di Lana (History of War, via PressReader)](https://www.pressreader.com/uk/history-of-war/20180614/282621738408331)
   — tunnelling began in mid-January 1916
+
+## 2026-11-17 — Step 2: the dawn orders screen, night and the skip-ahead
+
+| # | Topic | Chosen | Rejected | Why |
+| --- | --- | --- | --- | --- |
+| 32 | What the dawn orders screen holds now | The date, the weather, a morning report of the last 24 hours (men present, enemy sightings summarised, squads that finished a move or could not), and a "Carry on" button. Each later piece (work roster, carrying parties, patrols) adds its own section when it is built | Also choosing each squad's post for the day, with "same as yesterday" (the roster would probably absorb or replace it); also standing instructions (nothing can act on them until steps 3 and 4) | Nothing fake on the screen: the brief's rule is that nothing goes in unless it changes what happens and the player can see it. The roster is designed properly next instead of being guessed at here |
+| 33 | Seeing at night | A fuller night model now: the sun's height with twilight, the moon's phase and height, starlight, snow, and cloud set the light, and the light sets the spotting distance | A crude night cut (one number for every night); leaving sight at 1,500 m day and night and hiding night sightings from the report | Measured first: over one night with the step-1 patrols our men saw Italians 53 to 93% of the time, at a median 1,150 to 1,320 m, which is impossible in the dark and would have filled the report and stopped the skip-ahead every few minutes. Director's choice of the fuller model; it brings part of step 7 forward |
+| 34 | Where this week's cloud comes from | A weather diary for 6 to 12 March 1916 in a readable data file (`data/weather/march_1916.toml`), cloud cover through the week, invented but plausible; the falling snow piece adds to it | Cloud drawn at random from the seed (harder to test and to tune against); clear skies until the falling snow piece | Editable, the same week every playthrough, and tests can rely on it. No weather record from the summit for that week has been found |
+| 35 | How far a man can be spotted in each light | A man in a dark coat against snow: 1,500 m by day (also overcast day), 1,000 m in twilight just after sunset (about 10 lux), 500 m in deep twilight (1 lux), 300 m under a full moon (0.25 lux), 120 m under a quarter moon (0.01 lux), 50 m by clear starlight only (0.002 lux), 15 m on an overcast moonless night (0.0001 lux), changing smoothly in between. Values in `data/tuning.toml` | About twice as far (snow makes figures stand out more); about half as far | Light levels come from published tables; the distances are Claude's estimates, because no unaided-eye measurement for a man against snow was found. The night raid piece will test them in play |
+| 36 | What stops the skip-ahead | Dawn; our men seeing an enemy squad not seen in the previous 30 minutes; and a squad we ordered arriving or finding it cannot get there | Dawn and arrivals only (could skip past Italians walking up to the summit); dawn and dusk only (ignores everything) | The skip never runs past anything that matters. By day the step-1 patrols, which are in sight most of the day, would stop it about 20 times in 12 hours; at night, with the light model, never. Daytime skipping is choppy until the Italians behave less like wanderers (the raid piece) |
+
+Worked out while deciding (Claude's work, recorded so it can be revisited):
+
+- **The sky that week.** New moon on 4 March 1916, first quarter on the evening of 11 March, full
+  moon on 19 March. Each night of the week a growing crescent sets in the evening, from about 21:10
+  on Monday to about 02:40 on Sunday; the rest of each night is moonless. A low-precision solar
+  and lunar calculation for the summit agrees with an independent table for Telve (Trentino,
+  55 km west) for 11 March 1916: sunrise 06:35 there against 06:33 here, moonrise 09:49 against
+  about 10:00, moonset 01:42 against about 01:40, the moon 49% lit against 52%.
+- **Light levels used.** Sunset on a clear day about 400 lux, the end of civil twilight (sun 6°
+  down) about 3 lux, the end of nautical twilight (12° down) about 0.008 lux, astronomical (18°)
+  about 0.0006 lux; full moon about 0.25 lux, quarter moon about 0.01 lux, clear starlight about
+  0.002 lux, overcast moonless night about 0.0001 lux. Sources disagree by a factor of two or so;
+  these are order-of-magnitude figures.
+- **Night range at the measurement.** With a night spotting distance of 150 or 300 m, the step-1
+  Italian patrols (which stay at least 1 km from the summit) were never seen at night, and a whole
+  night ran headless in about 18 seconds instead of about a minute.
+
+### Sources used
+
+- [Orders of magnitude (illuminance), Wikipedia](https://en.wikipedia.org/wiki/Orders_of_magnitude_(illuminance))
+  — full moon, quarter moon, starlight and overcast night
+- [Civil twilight, AMS Glossary of Meteorology](https://glossarytest.ametsoc.net/wiki/Civil_twilight)
+  — illuminance falling from about 410 to 585 lux to about 2 to 3.5 lux through civil twilight
+- [Twilight types, US National Weather Service](https://www.weather.gov/lmk/twilight-types)
+  — the twilight stages by sun angle
+- [Moon phases March 1916 for Telve (mooninfo.org)](https://www.mooninfo.org/world/italy/292324/moon-phases-march-1916-for-telve.html)
+  — the independent check of the sun and moon calculation
+- [FM 21-75 Scouting, Patrolling and Sniping (US War Department, 1944)](https://reenactorpro.org/wp-content/uploads/2017/10/FM-21-75-Scouting-Patrolling-and-Sniping.pdf)
+  — daylight distances at which troops can be made out, and night observation technique; it gives
+  no night distances
+- [Performance modeling of electro-optical devices for military target acquisition (arXiv)](https://arxiv.org/pdf/1904.11678)
+  — the unaided eye detecting targets up to about 500 m under a full moon, background not stated
+
+## 2026-11-17 — Step 2: the orders moment comes at first light
+
+| # | Topic | Chosen | Rejected | Why |
+| --- | --- | --- | --- | --- |
+| 37 | When the dawn orders moment comes | First light, the standard meaning of dawn: the sun 6° below the horizon (the same rule as dusk), about 06:12 on Monday to 06:01 on Sunday. Test 12 changed to match | Sunrise, keeping test 12 and rewording test 18 so the last half-hour before sunrise may stop the skip-ahead; dimming the morning twilight so the patrols stay hidden until sunrise (goes against the light figures, only to pass a test) | The first test run found two approved tests in conflict. Measured on all seven nights: no sighting at all between dusk and first light, then one to five sightings each morning between first light and sunrise, Italians 740 to 1,500 m away in the growing light, each stopping the skip-ahead just short of an orders screen at sunrise. At first light the night is over and the sightings happen in play. Troops of the time stood to arms at first light, so it fits as well |
+
+Technical choices made while building the dawn screen (Claude's call, recorded so they can be
+revisited):
+
+- **Events only with a calendar.** Dawn, new contacts and arrivals are noted only in scenarios on
+  the calendar, so step 1 behaves and checksums exactly as before: its 11 test results are word for
+  word the same, and a step-1 replay recorded with the code from before this work
+  (`crates/alpine_sim/tests/data/step1_before_step2.ron`) still plays back matching.
+- **Slowing on events.** The brief says time slows on events. A new contact, an arrival or a squad
+  that cannot get there stops the skip-ahead and drops normal play to 1x, with a message naming
+  what happened; first light pauses the game and opens the orders screen. Squads on patrol, and
+  Italian squads' own moves, raise no events.
+- **The skip-ahead** runs the simulation flat out for up to 12 ms of real time per drawn frame, so
+  the screens stay responsive, and stops on the exact update of the event. It calls the same update
+  as normal play (test 20 checks the two give identical state for a whole day).
+- **The light is worked out every update** from the sun and moon positions (a few microseconds), for
+  a flat horizon: surrounding peaks hiding a low sun or moon are not modelled. The moon's light uses
+  Allen's rule for how its brightness falls away from full, and is dimmed near the horizon by the
+  thickness of air.
+- **The orders screen opens when the game starts** on the calendar, but not when the game is
+  fast-forwarded at start or run automatically (autoplay, the frame check), which carry on at dawn
+  by themselves.
+- **Replays keep the weather diary** they were recorded with, as they keep the tuning file, so
+  editing the diary does not break them. Old replays without one still load.
+- **The "what this man can see" shading** is worked out again whenever the spotting distance changes
+  by more than 5%, so it follows the light through dusk and dawn.
+- **The speed pass** now measures the step-2 game (Monday from first light, every squad moving), and
+  reports how long the skip-ahead takes from dusk to first light.

@@ -1,10 +1,12 @@
 //! Automatic click check (environment variable `ALPINE_CLICK_CHECK=1`), for proving that both views
 //! can be played the same way. In whichever view the game starts in, it:
+//! 0. at the dawn orders screen the game opens with, presses Enter to carry on,
 //! 1. left-clicks an Austro-Hungarian squad (its flag on the map, one of its men in 3D),
 //! 2. right-clicks the ground about 150 m from the squad (a point the camera can see) to send it there,
 //! 3. on the map only: zooms with the mouse wheel (the point under the cursor must stay put), holds W
 //!    (the map must move north) and right-drags (the map must follow the mouse, with no order given),
-//! 4. presses M to switch views.
+//! 4. presses M to switch views,
+//! 5. presses N for the skip-ahead (the game must run far faster than 64x, or stop on an event).
 //!
 //! The clicks go through the same code as the real mouse (`orders.rs`), with a stand-in cursor
 //! position, so the real mouse pointer is never moved. Prints one CLICK-CHECK line and exits.
@@ -13,6 +15,7 @@ use crate::map_view::{FLAG_PICK_OFFSET_PX, MapView, map_controls, squad_anchor};
 use crate::orders::{CursorOverride, clicks};
 use crate::sim_link::SimLink;
 use crate::terrain_view::{ground_hit, to_world};
+use crate::ui::shortcuts;
 use crate::units::{Selection, marker_scale};
 use crate::view::{MapCam, TerrainCam, ViewMode, switch_key};
 use alpine_sim::sim::Side;
@@ -26,6 +29,9 @@ const ORDER_TOLERANCE_M: f32 = 3.0;
 /// First step of the map-moving checks, and of pressing M.
 const MOVE: u32 = 10;
 const SWITCH: u32 = 30;
+const SKIP: u32 = 40;
+/// Frames the skip-ahead check watches.
+const SKIP_FRAMES: u32 = 20;
 /// How far the right-drag check moves the mouse, in pixels.
 const DRAG_PX: f32 = 60.0;
 
@@ -34,7 +40,7 @@ pub struct ClickCheckPlugin;
 impl Plugin for ClickCheckPlugin {
     fn build(&self, app: &mut App) {
         if std::env::var("ALPINE_CLICK_CHECK").is_ok() {
-            app.add_systems(Update, run.before(clicks).before(switch_key).before(map_controls));
+            app.add_systems(Update, run.before(clicks).before(switch_key).before(map_controls).before(shortcuts));
         }
     }
 }
@@ -53,6 +59,9 @@ struct Check {
     message_before: Option<String>,
     results: Vec<String>,
     passed: bool,
+    /// The dawn screen step: 0 not started, 1 Enter pressed, 2 done.
+    dawn: u8,
+    skip_from_tick: u64,
 }
 
 type Cam<'a> = (&'a Camera, &'a GlobalTransform);
@@ -135,10 +144,34 @@ fn run(
     let (terrain_cam, map_cam) = (*terrain_cam, *map_cam);
     let view_name = |m: ViewMode| if m == ViewMode::Map { "map" } else { "terrain" };
     let c = &mut *check;
+    // 0. The game opens at dawn with the orders screen: carry on.
+    match c.dawn {
+        0 if link.dawn_screen => {
+            keys.press(KeyCode::Enter);
+            c.dawn = 1;
+            return;
+        }
+        0 => {
+            c.results.push("dawn=none (no calendar)".into());
+            c.dawn = 2;
+        }
+        1 => {
+            keys.release(KeyCode::Enter);
+            if !link.dawn_screen && !link.paused {
+                c.results.push("dawn=ok (Enter closed the orders screen and time runs)".into());
+            } else {
+                c.results.push("dawn=FAIL (the orders screen stayed open)".into());
+                c.passed = false;
+            }
+            c.dawn = 2;
+            return;
+        }
+        _ => {}
+    }
     match c.step {
         0 => {
             c.started_in = Some(*mode);
-            c.passed = true;
+            c.passed = !c.results.iter().any(|r| r.contains("FAIL"));
             match choose(*mode, &link, &map, &window, terrain_cam, map_cam) {
                 Some((squad, p)) => {
                     c.squad = Some(squad);
@@ -287,6 +320,49 @@ fn run(
                 c.results.push("switch=FAIL (M did not change the view)".into());
                 c.passed = false;
             }
+            c.step = SKIP;
+            return;
+        }
+        // The skip-ahead: press N, then watch.
+        SKIP => {
+            if link.sim.clock.is_none() {
+                c.results.push("skip=none (no calendar)".into());
+                c.step = SKIP + SKIP_FRAMES + 1;
+                return;
+            }
+            c.skip_from_tick = link.sim.tick;
+            c.message_before = link.last_message.clone();
+            keys.press(KeyCode::KeyN);
+        }
+        n if n == SKIP + 1 => keys.release(KeyCode::KeyN),
+        n if n > SKIP + 1 && n <= SKIP + SKIP_FRAMES => {
+            // Stopped by an event (its message names the time, "HH:MM: ...") or the dawn screen.
+            let stopped = !link.skipping
+                && (link.dawn_screen
+                    || link.last_message.as_ref().is_some_and(|m| m.as_bytes().get(5) == Some(&b':') && link.last_message != c.message_before));
+            if stopped || n == SKIP + SKIP_FRAMES {
+                let ran = link.sim.tick - c.skip_from_tick;
+                let frames = n - SKIP - 1;
+                // At 64x, a frame of about 1/60 s runs about 11 updates.
+                let fast = ran as f32 / frames as f32 > 30.0;
+                let minutes = ran as f64 * link.sim.tuning.dt() as f64 / 60.0;
+                if stopped {
+                    c.results.push(format!(
+                        "skip=ok (ran {minutes:.1} game minutes in {frames} frames, then stopped: {})",
+                        if link.dawn_screen { "dawn".to_string() } else { link.last_message.clone().unwrap_or_default() }
+                    ));
+                } else if fast {
+                    c.results.push(format!("skip=ok (ran {minutes:.1} game minutes in {frames} frames)"));
+                } else {
+                    c.results.push(format!("skip=FAIL (only {ran} updates in {frames} frames)"));
+                    c.passed = false;
+                }
+                c.step = SKIP + SKIP_FRAMES + 1;
+                return;
+            }
+        }
+        n if n == SKIP + SKIP_FRAMES + 1 => {
+            let started = c.started_in.unwrap_or(*mode);
             println!(
                 "CLICK-CHECK view={} {} {}",
                 view_name(started),

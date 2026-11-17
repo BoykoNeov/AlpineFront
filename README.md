@@ -9,6 +9,11 @@ spotting each other by line of sight, a free camera, debug overlays and exact re
 Added after step 1: a 2D map drawn as a First World War staff map, with everything the 3D view can
 do.
 
+Build step 2 (a week on the summit, rough) under way. Done so far: the summit as it was before the
+April 1916 mine; the calendar (Monday 6 to Sunday 12 March 1916), with the sun, the moon and a weather
+diary setting how far men can see, from 1,500 m by day to 15 to 50 m on a dark night; the dawn orders
+screen with a morning report; and the skip-ahead.
+
 - [Design brief](docs/design-brief.md): what the game is, the agreed decisions, architecture and
   build order
 - [Decision log](docs/decisions.md): why each decision was taken
@@ -21,14 +26,21 @@ Built in Rust with the Bevy engine.
 
     cargo run --release -p alpine_front
 
-Options: `--seed N` picks a different starting layout, `--autoplay` sets every squad wandering on
+The game opens at first light on Monday 6 March 1916 with the orders screen; press Enter (or click
+"Carry on") to start the day. It stops there again every morning at first light.
+
+Options: `--seed N` picks a different starting layout, `--step1` plays the step-1 scenario (no
+calendar, always daylight), `--autoplay` sets every squad wandering on
 its own, `--replay FILE` plays a saved replay back and checks that it matches, and `--view map`
 starts on the map. A replay plays only on the ground it was recorded on; replays saved before the
 map changed are refused.
 
 M switches between the 3D view and the map. In both, left-click selects a squad, right-click the
 ground sends a selected Austro-Hungarian squad there, Space pauses, 1 to 7 set the speed (1x to
-64x), F5 saves a replay into `replays/`, and the panel on the left switches the overlays.
+64x), N skips ahead (as fast as the computer can, until first light or until something happens: an
+Italian squad nobody had seen for 30 minutes comes into sight, or a squad you sent arrives or cannot
+get there; normal play also drops to 1x on these), F5 saves a replay into `replays/`, and the panel
+on the left switches the overlays.
 
 - 3D view: W A S D move, Q / E down / up, Shift faster, mouse wheel changes camera speed, hold the
   right mouse button and drag to look around. Left-click a soldier to select his squad.
@@ -40,7 +52,8 @@ ground sends a selected Austro-Hungarian squad there, Space pauses, 1 to 7 set t
 
     cargo test --release -p alpine_sim
 
-The scenario tests end in a plain-language report.
+The scenario tests end in a plain-language report: `--test scenarios` runs the step-1 tests (about
+30 s), `--test step2` the calendar, night and skip-ahead tests (about 3 minutes).
 
 ## Speed pass
 
@@ -65,9 +78,14 @@ planning pause went from 1 to 4 game seconds and the check moved to judging each
 within 2.4 ms); 99% of drawn frames within 8.8 ms in both views. Run flat out, the simulation goes
 about 1,080x faster than real time.
 
+Step 2, with the calendar and the light model (2026-11-17): passed. The busiest frame's simulation
+work was 3.5 ms against an 8.3 ms limit (99% within 2.4 ms); 99% of drawn frames within 8.6 to 8.7 ms
+in both views. Run flat out the simulation goes about 1,050x faster than real time; the skip-ahead
+crosses a night, dusk to first light (11.6 game hours), in about 17 s.
+
 `ALPINE_CLICK_CHECK=1 target\release\alpine_front.exe --view map` (or `--view terrain`) checks that a
-view can be played: it clicks a squad, orders it, on the map also zooms with the wheel, moves the
-map with W and by right-dragging, then switches views with M, and reports PASS or FAIL.
+view can be played: it carries on at the dawn orders screen, clicks a squad, orders it, on the map also zooms with the wheel, moves the
+map with W and by right-dragging, then switches views with M, tries the skip-ahead with N, and reports PASS or FAIL.
 
 ## Lettering
 

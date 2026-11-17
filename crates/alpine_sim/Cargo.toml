@@ -16,3 +16,9 @@ toml = "1.2.1"
 [[test]]
 name = "scenarios"
 harness = false
+
+# The locked step-2 tests: calendar, night and the skip-ahead (docs/scenario-tests.md, 12 to 21).
+# Run with: cargo test --release -p alpine_sim --test step2
+[[test]]
+name = "step2"
+harness = false

@@ -8,12 +8,15 @@ pub mod flow;
 pub mod hash;
 pub mod los;
 pub mod replay;
+pub mod report;
 pub mod rng;
 pub mod scenario;
 pub mod sim;
+pub mod sky;
 pub mod spatial;
 pub mod terrain;
 pub mod tuning;
+pub mod weather;
 
 use std::path::PathBuf;
 

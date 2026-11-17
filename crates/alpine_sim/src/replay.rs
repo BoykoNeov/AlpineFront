@@ -28,6 +28,9 @@ pub struct Replay {
     pub terrain: u64,
     /// The tuning file's text at the time of recording, so later edits don't break the replay.
     pub tuning_toml: String,
+    /// The weather diary's text at the time of recording (step 2 on; empty for step 1).
+    #[serde(default)]
+    pub weather_toml: String,
     /// How many ticks were recorded.
     pub ticks: u64,
     pub orders: Vec<LoggedOrder>,
@@ -41,7 +44,7 @@ pub struct Recorder {
 }
 
 impl Recorder {
-    pub fn new(scenario: &str, seed: u64, terrain: u64, tuning_toml: &str) -> Self {
+    pub fn new(scenario: &str, seed: u64, terrain: u64, tuning_toml: &str, weather_toml: &str) -> Self {
         Recorder {
             replay: Replay {
                 format: FORMAT,
@@ -50,6 +53,7 @@ impl Recorder {
                 seed,
                 terrain,
                 tuning_toml: tuning_toml.to_string(),
+                weather_toml: weather_toml.to_string(),
                 ticks: 0,
                 orders: Vec::new(),
                 checksums: Vec::new(),
@@ -105,8 +109,7 @@ impl Replay {
             return Err("this replay was recorded on different ground (the map has changed since), so it cannot be played back".to_string());
         }
         let tuning = Tuning::from_toml(&self.tuning_toml)?;
-        let mut sim = scenario::build(&self.scenario, terrain, tuning, self.seed, pool)
-            .ok_or_else(|| format!("unknown scenario '{}'", self.scenario))?;
+        let mut sim = scenario::build(&self.scenario, terrain, tuning, self.seed, pool, &self.weather_toml)?;
         for o in &self.orders {
             sim.schedule(o.clone());
         }
@@ -144,7 +147,7 @@ mod tests {
         bumped[5] = 1.0;
         let other = Arc::new(Terrain::from_heights(4, 4, 10.0, bumped, 45.0));
         assert_ne!(flat.fingerprint(), other.fingerprint());
-        let rec = Recorder::new(scenario::STEP1, 1, flat.fingerprint(), "");
+        let rec = Recorder::new(scenario::STEP1, 1, flat.fingerprint(), "", "");
         let pool = Arc::new(rayon::ThreadPoolBuilder::new().num_threads(1).build().unwrap());
         let err = rec.replay.start(other, pool).err().expect("should refuse");
         assert!(err.contains("different ground"), "{err}");

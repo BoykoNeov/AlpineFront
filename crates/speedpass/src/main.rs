@@ -2,21 +2,25 @@
 //!
 //! 1. Restricts this process (and the game it launches) to 8 logical processors on 4 physical cores,
 //!    two per core, read from Windows' own description of the CPU.
-//! 2. Simulation check: runs the step-1 scenario with every squad moving and times every update.
+//! 2. Simulation check: runs the step-2 scenario from Monday's dawn with every squad moving and
+//!    times every update.
 //!    At the fastest game speed, the updates falling in each 1/60 s of real time (one frame) must
 //!    together use no more than half of it (decision 30). Single slow updates are reported.
 //! 3. Frame check, once per view: launches the game at 2560x1440 with vsync off, flies the camera
 //!    over the 3D terrain (then pans and zooms the 2D map) and reads back its frame times. In each
 //!    view 99% of frames must finish within 11 ms (30 fps on an RTX 3070, taken as about a third of
 //!    the RTX 5090's speed).
-//! 4. For information only: how the simulation copes with 1,000, 3,000 and 5,000 soldiers.
+//! 4. For information only: how long the skip-ahead takes from dusk to dawn, and how the simulation
+//!    copes with 1,000, 3,000 and 5,000 soldiers.
 //!
 //! Build everything in release mode first, then run:
 //!   cargo build --release --workspace
 //!   target\release\speedpass.exe
 
 use alpine_sim::scenario;
-use alpine_sim::sim::make_pool;
+use alpine_sim::sim::{Sim, make_pool};
+use alpine_sim::sky;
+use alpine_sim::weather::Weather;
 use alpine_sim::terrain::Terrain;
 use alpine_sim::tuning::Tuning;
 use std::process::Command;
@@ -254,7 +258,9 @@ fn main() {
     let budget = per_tick_ms / 2.0;
 
     // Simulation check, at the top game speed in real time, as the game runs it.
-    let mut sim = scenario::step1(terrain.clone(), tuning.clone(), 1916, pool.clone(), true);
+    let (diary, _) = Weather::load_march_1916().expect("weather diary");
+    let step2 = || scenario::step2(terrain.clone(), tuning.clone(), 1916, pool.clone(), true, diary.clone()).expect("step 2");
+    let mut sim = step2();
     let n = sim.soldiers.len();
     let ticks = (SIM_CHECK_MINUTES * 60.0 * tps) as u64;
     let t = time_ticks(&mut sim, ticks, budget, Some(per_tick_ms));
@@ -280,7 +286,7 @@ fn main() {
         t.over,
     );
     // Headroom: the same run with no pause between updates.
-    let mut sim = scenario::step1(terrain.clone(), tuning.clone(), 1916, pool.clone(), true);
+    let mut sim = step2();
     let h = time_ticks(&mut sim, ticks, budget, None);
     println!(
         "     Run flat out with no pause between updates, the same {SIM_CHECK_MINUTES} minutes take {:.1} s, about {:.0}x faster \
@@ -292,6 +298,29 @@ fn main() {
         h.max,
         h.over
     );
+
+    // The skip-ahead through Monday night, for information.
+    {
+        let mut cal = scenario::step2_calendar(&terrain, &tuning).expect("calendar");
+        let noon = cal.start + 5.0 * 3600.0;
+        cal.start = cal.next_set(noon, 12.0, sky::DUSK_ALTITUDE_DEG, |t| cal.sun_altitude(t)).expect("dusk");
+        let mut sim: Sim = scenario::step1(terrain.clone(), tuning.clone(), 1916, pool.clone(), false);
+        sim.set_clock(cal, diary.clone());
+        let start = Instant::now();
+        let stop = sim.skip(|s| s.tick < (16.0 * 3600.0 * tps) as u64, |_| {});
+        let secs = start.elapsed().as_secs_f64();
+        println!(
+            "     Skip-ahead, for information: from dusk on Monday ({}) it stopped at {} on {}, {:.1} game hours in {secs:.1} s.",
+            cal.now(0.0).hhmm(),
+            sim.now().unwrap().hhmm(),
+            match stop.as_deref() {
+                Some([alpine_sim::sim::Event::Dawn { .. }, ..]) => "dawn".to_string(),
+                Some(e) => format!("{e:?}"),
+                None => "nothing (ran out of time)".to_string(),
+            },
+            sim.game_seconds() / 3600.0
+        );
+    }
 
     // Frame check, in each view; the worst verdict counts.
     let mut frames = FrameVerdict::Pass;

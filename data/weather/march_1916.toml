@@ -1,0 +1,54 @@
+# Weather diary for Col di Lana, Monday 6 to Sunday 12 March 1916 (decision 34).
+#
+# INVENTED, not historical: no weather record from the summit for this week has been found. It is a
+# plausible late-winter week with some clear nights and some overcast ones, so the night model has
+# both to show. Safe to edit; replays keep a copy of the diary they were recorded with.
+#
+# Cloud cover: 0 = clear sky, 1 = overcast. Times are Central European Time. Between two entries the
+# cover changes evenly; before the first and after the last it stays as it is. Keep changes spread
+# over an hour or more, as real cloud is.
+#
+# The falling snow piece of step 2 will add snowfall to this diary.
+
+cloud = [
+    # Sunday afternoon before the week: broken cloud, clearing in the night.
+    { at = "1916-03-05 12:00", cover = 0.4 },
+    { at = "1916-03-05 22:00", cover = 0.1 },
+
+    # Monday 6: a clear, hard-frost morning; cloud builds in the afternoon. Overcast night.
+    { at = "1916-03-06 06:00", cover = 0.0 },
+    { at = "1916-03-06 12:00", cover = 0.2 },
+    { at = "1916-03-06 15:00", cover = 0.6 },
+    { at = "1916-03-06 18:00", cover = 1.0 },
+
+    # Tuesday 7: overcast all day; clearing in the evening. Clear second half of the night.
+    { at = "1916-03-07 16:00", cover = 1.0 },
+    { at = "1916-03-07 20:00", cover = 0.3 },
+    { at = "1916-03-07 23:00", cover = 0.0 },
+
+    # Wednesday 8: clear day and clear night.
+    { at = "1916-03-08 12:00", cover = 0.1 },
+    { at = "1916-03-08 18:00", cover = 0.0 },
+
+    # Thursday 9: high cloud thickening through the day. Overcast night.
+    { at = "1916-03-09 06:00", cover = 0.1 },
+    { at = "1916-03-09 10:00", cover = 0.5 },
+    { at = "1916-03-09 15:00", cover = 0.9 },
+    { at = "1916-03-09 18:00", cover = 1.0 },
+
+    # Friday 10: overcast, breaking up in the evening. Partly cloudy night.
+    { at = "1916-03-10 14:00", cover = 1.0 },
+    { at = "1916-03-10 18:00", cover = 0.7 },
+    { at = "1916-03-10 22:00", cover = 0.5 },
+
+    # Saturday 11: clearing before dawn; clear day and clear night (half moon until about 01:40).
+    { at = "1916-03-11 04:00", cover = 0.3 },
+    { at = "1916-03-11 08:00", cover = 0.0 },
+    { at = "1916-03-12 04:00", cover = 0.0 },
+
+    # Sunday 12: cloud coming in from the south-west. Overcast by evening.
+    { at = "1916-03-12 10:00", cover = 0.3 },
+    { at = "1916-03-12 14:00", cover = 0.8 },
+    { at = "1916-03-12 18:00", cover = 1.0 },
+    { at = "1916-03-13 08:00", cover = 1.0 },
+]

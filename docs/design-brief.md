@@ -53,7 +53,8 @@ That makes verification tooling part of the first milestone, not a later extra:
 | Player seat, first | Company commander on one position, 150 to 250 men | Exercises every mechanic on a small map |
 | Player seat, later | Sector commander with several battalions | Same simulation, player moved up the chain |
 | Time | Continuous, with pause and speeds up to 64×, plus a skip-ahead that runs as fast as the computer can until dawn or until something happens; auto-slows on events | A company's life runs from seconds to weeks: 64× lets a quiet night pass in about 10 minutes while still watchable, and the skip-ahead jumps the dead hours |
-| Core loop | Continuous time plus a daily orders moment at dawn (optionally dusk): work roster, night patrols, standing instructions, requests to headquarters, with "same as yesterday" defaults. Building projects run for days in the background | Gives quiet weeks real choices and matches how a company was run |
+| Core loop | Continuous time plus a daily orders moment at dawn (optionally dusk): work roster, night patrols, standing instructions, requests to headquarters, with "same as yesterday" defaults. Building projects run for days in the background. The game stops by itself at first light (dawn: the sun 6° below the horizon, decision 37) and opens the orders screen with a morning report; each part of the screen arrives with the mechanic it orders (decision 32) | Gives quiet weeks real choices and matches how a company was run |
+| Light | Calendar time drives the light: the sun's height (with twilight), the moon's phase and height, starlight, and cloud. The light sets how far a man can be spotted, from 1,500 m by day to about 50 m on a clear moonless night and 15 m under overcast (decisions 33 to 35) | Sightings at night must be believable, in the reports and on the map |
 | Campaign | One company, one position, a season or a full year | Combat sits inside survival, engineering and supply |
 | Scenarios | Standalone set pieces, historical or invented | For example the mining of the Col di Lana summit |
 | Setting | Col di Lana. Modern elevation data shows the crater of the April 1916 mine (about 35 × 25 m and 12 m deep), so the game fills it to show the summit as it was before the blast | Its rounded shape suits the heightmap; a season of attacks ends in the mine; Monte Sief along the ridge leaves room to grow. Lagazuoi's ledges and overhangs need a far more complex terrain model |
@@ -148,7 +149,7 @@ All of these are intended; none is designed in detail yet.
 | Mechanic | Design note so far |
 | --- | --- |
 | Terrain | Slope, rock and cover drive movement, line of sight and fire |
-| Weather | Rain, snow, fog, wind and cold affect visibility, movement, signalling and health |
+| Weather | Rain, snow, fog, wind and cold affect visibility, movement, signalling and health. Cloud already dims the night from step 2 |
 | Snow cover | A depth layer that accumulates and melts |
 | Avalanches | Both hazard and weapon, tied to snow load, slope and shelling |
 | Artillery | True ballistic arcs against the heightmap, so dead ground and gun type matter |
@@ -210,15 +211,26 @@ hardware.
    Then the dawn orders screen, work roster, carrying parties, simple
    cold and hunger, falling snow, and one night raid with basic shooting and a simple enemy officer.
    The whole game in miniature; crude is fine and is not polished.
+   - The dawn orders screen brings the calendar clock, the skip-ahead and the light model with it.
+     For now the screen holds the date, the weather and a morning report of the last 24 hours, and
+     a "Carry on" button (decision 32). The skip-ahead stops at dawn, when our men see an enemy
+     squad not seen in the last 30 minutes, and when a squad we ordered arrives or cannot get there
+     (decision 36). Normal play drops to 1× on the same events.
+   - The light model and the week's cloud come forward from step 7 (decisions 33 and 34): the sun,
+     the moon and cloud set the spotting distance. The cloud comes from a weather diary for the
+     week, an invented but plausible late-winter week in a readable data file, which the falling
+     snow piece will extend.
    - The week is Monday 6 to Sunday 12 March 1916 (decision 31): deep snow and hard cold, the
      Italians tunnelling toward the summit since mid-January. On the summit the sun rises at about
      06:40 and sets at about 18:10 (Central European Time, before summer time began that April), so
-     nights last about 12½ hours.
+     nights last about 12½ hours. First light, when the orders moment comes, is about half an hour
+     before sunrise: 06:12 on Monday, 06:01 on Sunday.
 3. **Fire and morale.** Small-arms combat, suppression, cover, and soldiers who break.
 4. **Officer AI.** Enemy and subordinate officers acting on orders, traits and partial knowledge.
 5. **Artillery and craters.** Ballistic fire, observers, terrain deformation.
 6. **Supply and building.** Food, ammunition, carrying parties, cableways, huts, caverns, wire.
-7. **Weather and snow.** Fields, snow layer, cold, avalanches.
+7. **Weather and snow.** Fields, snow layer, cold, avalanches. (Light, night and the step-2
+   weather diary already exist from step 2; this step replaces the diary with weather fields.)
 8. **Tunnels and mines.** Digging, listening, counter-mining, the summit explosion.
 9. **Campaign and scenarios.** The season-long game and standalone set pieces. The final screen look
    is decided before this step.

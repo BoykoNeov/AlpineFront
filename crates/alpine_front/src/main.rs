@@ -2,9 +2,12 @@
 //! the simulation itself lives in `alpine_sim` and never depends on anything here.
 //!
 //! Usage:
-//!   alpine_front [--seed N] [--autoplay] [--replay FILE] [--view terrain|map] [--frame-check SECONDS]
+//!   alpine_front [--seed N] [--step1] [--autoplay] [--replay FILE] [--view terrain|map] [--frame-check SECONDS]
 //!                [--advance-minutes M] [--camera X,Y,Z,TX,TY,TZ] [--map X,Y,WIDTH] [--overlays a,b]
 //!                [--select ID] [--screenshot FILE]
+//!
+//! The game is step 2: a week on the summit from dawn on Monday 6 March 1916. `--step1` plays the
+//! step-1 scenario instead (no calendar, always daylight).
 //!
 //! `--view map` starts on the 2D map instead of the 3D view (M switches while playing); with
 //! `--frame-check` it measures the map's frames instead of the 3D view's.
@@ -35,6 +38,8 @@ use std::path::PathBuf;
 #[derive(Resource, Clone, Debug)]
 pub struct Options {
     pub seed: u64,
+    /// Play the step-1 scenario (no calendar) instead of step 2.
+    pub step1: bool,
     pub autoplay: bool,
     pub replay: Option<PathBuf>,
     /// Start on the 2D map.
@@ -50,7 +55,7 @@ pub struct Options {
     pub screenshot: Option<PathBuf>,
 }
 
-const USAGE: &str = "usage: alpine_front [--seed N] [--autoplay] [--replay FILE] [--view terrain|map] \
+const USAGE: &str = "usage: alpine_front [--seed N] [--step1] [--autoplay] [--replay FILE] [--view terrain|map] \
     [--frame-check SECONDS] [--advance-minutes M] [--camera X,Y,Z,TX,TY,TZ] [--map X,Y,WIDTH] \
     [--overlays a,b] [--select ID] [--screenshot FILE]";
 
@@ -69,6 +74,7 @@ fn numbers<const N: usize>(text: Option<String>, what: &str) -> Result<[f32; N],
 fn parse_options() -> Result<Options, String> {
     let mut o = Options {
         seed: 1916,
+        step1: false,
         autoplay: false,
         replay: None,
         map_view: false,
@@ -85,6 +91,7 @@ fn parse_options() -> Result<Options, String> {
         match a.as_str() {
             "--seed" => o.seed = args.next().and_then(|v| v.parse().ok()).ok_or("--seed needs a number")?,
             "--autoplay" => o.autoplay = true,
+            "--step1" => o.step1 = true,
             "--replay" => o.replay = Some(args.next().ok_or("--replay needs a file")?.into()),
             "--view" => {
                 o.map_view = match args.next().as_deref() {
@@ -128,7 +135,7 @@ fn main() {
     };
     let checking = options.frame_check.is_some();
     let window = Window {
-        title: "Alpine Front - Col di Lana (build step 1)".into(),
+        title: "Alpine Front - Col di Lana (build step 2)".into(),
         // The frame check uses exactly 2560x1440 pixels whatever the desktop scaling, with vsync off
         // (falling back to vsync where the machine cannot turn it off).
         resolution: if checking {

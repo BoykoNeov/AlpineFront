@@ -13,6 +13,61 @@ pub struct Tuning {
     pub spotting: SpottingTuning,
     pub line_of_sight: LosTuning,
     pub scenario: ScenarioTuning,
+    /// Optional in the file so replays saved before the light model still load.
+    #[serde(default)]
+    pub light: LightTuning,
+    #[serde(default)]
+    pub events: EventTuning,
+}
+
+/// Light and how far a man can be seen in it (decisions 33 to 35).
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct LightTuning {
+    /// Pairs of (light on the ground in lux, distance in metres at which a man in a dark coat is
+    /// spotted against snow). Read as straight lines on log-log paper between the points.
+    pub spotting_by_light: Vec<[f64; 2]>,
+    /// Pairs of (sun's height above the horizon in degrees, light in lux under a clear sky), from
+    /// high to low.
+    pub sun_lux_by_altitude: Vec<[f64; 2]>,
+    pub full_moon_lux: f64,
+    pub starlight_lux: f64,
+    /// Overcast lets this share of the light through; partial cloud lets through this raised to
+    /// the cloud cover.
+    pub overcast_light_factor: f64,
+}
+
+impl Default for LightTuning {
+    fn default() -> Self {
+        LightTuning {
+            spotting_by_light: vec![
+                [100.0, 1500.0],
+                [10.0, 1000.0],
+                [1.0, 500.0],
+                [0.25, 300.0],
+                [0.01, 120.0],
+                [0.002, 50.0],
+                [0.0001, 15.0],
+            ],
+            sun_lux_by_altitude: vec![[0.0, 400.0], [-6.0, 3.0], [-12.0, 0.008], [-18.0, 0.0006]],
+            full_moon_lux: 0.25,
+            starlight_lux: 0.002,
+            overcast_light_factor: 0.05,
+        }
+    }
+}
+
+/// What counts as an event worth stopping the skip-ahead for (decision 36).
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct EventTuning {
+    /// An enemy squad coming into view counts as a new contact if none of our men had seen it for
+    /// this long.
+    pub new_contact_after_unseen_minutes: f32,
+}
+
+impl Default for EventTuning {
+    fn default() -> Self {
+        EventTuning { new_contact_after_unseen_minutes: 30.0 }
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -72,6 +127,13 @@ pub struct ScenarioTuning {
     pub italian_zone_max_height_m: f32,
     pub patrol_pause_min_minutes: f32,
     pub patrol_pause_max_minutes: f32,
+    /// The step-2 game opens at sunrise on this day (decision 31).
+    #[serde(default = "default_step2_first_day")]
+    pub step2_first_day: String,
+}
+
+fn default_step2_first_day() -> String {
+    "1916-03-06".into()
 }
 
 impl Tuning {

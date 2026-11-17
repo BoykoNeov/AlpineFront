@@ -66,3 +66,32 @@ italian_zone_max_height_m = 2000.0
 # An Italian squad waits this long (game minutes, chosen at random in the range) before moving on.
 patrol_pause_min_minutes = 2.0
 patrol_pause_max_minutes = 10.0
+# Step-2 scenario: the same troops, on the calendar. The game opens at first light on this day
+# (decisions 31 and 37). The week's cloud is in data/weather/march_1916.toml.
+step2_first_day = "1916-03-06"
+
+[light]
+# Used only by scenarios with a calendar (step 2 on); step 1 always has daylight (decisions 33-35).
+# How far a man in a dark coat is spotted against snow, by the light on the ground:
+# [lux, metres]. Between the points the distance changes smoothly (straight lines on log-log
+# paper). The top is capped by spotting_range_m above. The lux figures follow published tables;
+# the distances are estimates, approved by the director on 2026-11-17.
+#   100 lux and more: day, also overcast  10 lux: twilight just after sunset
+#   1 lux: deep twilight   0.25: full moon   0.01: quarter moon
+#   0.002: clear starlight only   0.0001: overcast, no moon
+spotting_by_light = [[100.0, 1500.0], [10.0, 1000.0], [1.0, 500.0], [0.25, 300.0], [0.01, 120.0], [0.002, 50.0], [0.0001, 15.0]]
+# Light from the sun under a clear sky by its height: [degrees above the horizon, lux], from high to
+# low. Sunset about 400 lux; end of civil twilight (6 degrees down) about 3; nautical (12) 0.008;
+# astronomical (18) 0.0006.
+sun_lux_by_altitude = [[0.0, 400.0], [-6.0, 3.0], [-12.0, 0.008], [-18.0, 0.0006]]
+# A full moon high in a clear sky; less when lower, and much less when not full.
+full_moon_lux = 0.25
+# Clear starlight and the night sky's own glow.
+starlight_lux = 0.002
+# A fully overcast sky lets this share of the light through.
+overcast_light_factor = 0.05
+
+[events]
+# The skip-ahead stops, and normal play drops to 1x, when our men see an enemy squad nobody had
+# seen for this long (decision 36).
+new_contact_after_unseen_minutes = 30.0

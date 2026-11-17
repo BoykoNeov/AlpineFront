@@ -38,6 +38,8 @@ impl Default for OverlaySettings {
 pub struct ViewshedState {
     observer: Option<u32>,
     at: (f32, f32),
+    /// The spotting distance it was worked out for (it changes with the light).
+    radius: f32,
     computed_at_tick: u64,
     pub last_ms: f32,
 }
@@ -130,13 +132,18 @@ fn update_viewshed(
     let Some(obs) = selection.soldier else { return };
     let s = &link.sim.soldiers[obs as usize];
     let moved = ((s.x - state.at.0).powi(2) + (s.y - state.at.1).powi(2)).sqrt();
-    let stale = state.observer != Some(obs) || moved > 5.0 || (moved > 0.5 && link.sim.tick >= state.computed_at_tick + 50);
+    let range = link.sim.spotting_range;
+    let light_changed = (range - state.radius).abs() > 0.05 * state.radius.max(1.0);
+    let stale = state.observer != Some(obs)
+        || moved > 5.0
+        || light_changed
+        || (moved > 0.5 && link.sim.tick >= state.computed_at_tick + 50);
     if !stale {
         return;
     }
     let sim = &link.sim;
     let t = &sim.terrain;
-    let radius = sim.tuning.spotting.spotting_range_m;
+    let radius = range;
     let eye = [s.x, s.y, t.height(s.x, s.y) + sim.tuning.soldier.eye_height_m];
     let start = Instant::now();
     let seen = sim.pool().install(|| los::viewshed(t, &sim.los, eye, radius, sim.tuning.soldier.head_height_m));
@@ -157,6 +164,7 @@ fn update_viewshed(
     state.observer = Some(obs);
     state.at = (s.x, s.y);
     state.computed_at_tick = sim.tick;
+    state.radius = radius;
 }
 
 /// Works out this frame's overlay lines.
@@ -216,7 +224,7 @@ fn collect_strokes(
         && let Some(obs) = selection.soldier
     {
         let (cx, cy) = link.drawn_position(obs as usize);
-        let r = sim.tuning.spotting.spotting_range_m;
+        let r = sim.spotting_range;
         let ring = (0..=180)
             .map(|k| {
                 let a = k as f32 / 180.0 * std::f32::consts::TAU;

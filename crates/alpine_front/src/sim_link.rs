@@ -3,15 +3,19 @@
 use crate::Options;
 use alpine_sim::replay::{Recorder, Replay};
 use alpine_sim::scenario;
-use alpine_sim::sim::{Sim, make_pool};
+use alpine_sim::sim::{Event, Sim, make_pool};
 use alpine_sim::terrain::Terrain;
 use alpine_sim::tuning::Tuning;
+use alpine_sim::weather::Weather;
 use bevy::prelude::*;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
 
 pub const SPEEDS: [u32; 7] = [1, 2, 4, 8, 16, 32, 64];
+/// Real time the skip-ahead may spend running the simulation in each frame, so the screens stay
+/// responsive while it runs.
+const SKIP_BUDGET_MS: f64 = 12.0;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum ReplayStatus {
@@ -54,6 +58,12 @@ pub struct SimLink {
     pub frame_share_worst: f32,
     share_window: Vec<f32>,
     pub last_message: Option<String>,
+    /// The skip-ahead is running: as fast as the computer can until dawn or until something happens.
+    pub skipping: bool,
+    /// The dawn orders screen is open (the game waits for "Carry on").
+    pub dawn_screen: bool,
+    /// Automatic runs (autoplay, the frame check) carry on at dawn by themselves.
+    pub auto_carry_on: bool,
 }
 
 impl SimLink {
@@ -77,9 +87,16 @@ impl SimLink {
             }
             None => {
                 let terrain = Arc::new(Terrain::load_col_di_lana(tuning.walking.steepest_walkable_deg)?);
-                let name = if o.autoplay || o.frame_check.is_some() { scenario::STEP1_AUTOPLAY } else { scenario::STEP1 };
-                let rec = Recorder::new(name, o.seed, terrain.fingerprint(), &tuning_toml);
-                let sim = scenario::build(name, terrain, tuning, o.seed, pool).unwrap();
+                let auto = o.autoplay || o.frame_check.is_some();
+                let name = match (o.step1, auto) {
+                    (true, true) => scenario::STEP1_AUTOPLAY,
+                    (true, false) => scenario::STEP1,
+                    (false, true) => scenario::STEP2_AUTOPLAY,
+                    (false, false) => scenario::STEP2,
+                };
+                let weather_toml = if scenario::uses_weather(name) { Weather::load_march_1916()?.1 } else { String::new() };
+                let rec = Recorder::new(name, o.seed, terrain.fingerprint(), &tuning_toml, &weather_toml);
+                let sim = scenario::build(name, terrain, tuning, o.seed, pool, &weather_toml)?;
                 (sim, name.to_string(), Some(rec), None)
             }
         };
@@ -94,6 +111,9 @@ impl SimLink {
         }
         let previous = sim.soldiers.iter().map(|s| (s.x, s.y)).collect();
         let top_speed = sim.tuning.time.max_speed;
+        let auto_carry_on = o.autoplay || o.frame_check.is_some();
+        // A game on the calendar opens at dawn, with the orders screen.
+        let dawn_screen = sim.clock.is_some() && ahead == 0 && !auto_carry_on;
         Ok(SimLink {
             sim,
             scenario,
@@ -111,7 +131,72 @@ impl SimLink {
             frame_share_worst: 0.0,
             share_window: Vec::new(),
             last_message: None,
+            skipping: false,
+            dawn_screen,
+            auto_carry_on,
         })
+    }
+
+    /// Closes the dawn orders screen and lets time run again.
+    pub fn carry_on(&mut self) {
+        self.dawn_screen = false;
+        self.paused = false;
+    }
+
+    /// Starts or stops the skip-ahead.
+    pub fn toggle_skip(&mut self) {
+        if self.sim.clock.is_none() {
+            self.last_message = Some("The skip-ahead needs the calendar (step 2).".into());
+            return;
+        }
+        if self.dawn_screen {
+            return;
+        }
+        self.skipping = !self.skipping;
+        if self.skipping {
+            self.paused = false;
+            self.last_message = Some("Skipping ahead to dawn, or until something happens.".into());
+        }
+    }
+
+    /// Reacts to the events of the latest update (decision 36): dawn opens the orders screen;
+    /// a new contact or an arrival stops the skip-ahead and slows the game to 1x. Returns whether
+    /// time should stop running this frame.
+    fn react(&mut self, events: &[Event]) -> bool {
+        let mut stop = false;
+        for e in events {
+            if !e.stops_time() {
+                continue;
+            }
+            let when = self.sim.now().map(|t| t.hhmm()).unwrap_or_default();
+            let what = match e {
+                Event::Dawn { .. } => {
+                    if self.auto_carry_on {
+                        continue;
+                    }
+                    self.dawn_screen = true;
+                    self.paused = true;
+                    self.skipping = false;
+                    stop = true;
+                    continue;
+                }
+                Event::Contact { enemy_squad, seen_by_squad, distance_m } => {
+                    format!("{when}: Italian squad {enemy_squad} came into sight of our squad {seen_by_squad}, {distance_m:.0} m away.")
+                }
+                Event::Arrived { squad } => format!("{when}: squad {squad} has arrived."),
+                Event::Unreachable { squad } => format!("{when}: squad {squad} cannot get where it was sent."),
+                Event::Dusk => continue,
+            };
+            if self.auto_carry_on {
+                continue;
+            }
+            let slowed = self.skipping || self.speed > 1;
+            self.skipping = false;
+            self.speed = 1;
+            self.last_message = Some(if slowed { format!("{what} Slowed to 1x.") } else { what });
+            stop = true;
+        }
+        stop
     }
 
     /// Where soldier `i` should be drawn now (between the last two ticks), in simulation metres.
@@ -149,10 +234,51 @@ impl Plugin for SimLinkPlugin {
     }
 }
 
+/// Records the latest update for the replay, or checks it against the replay being played back.
+fn after_update(sim: &Sim, recorder: &mut Option<Recorder>, playback: &mut Option<Playback>) {
+    if let Some(rec) = recorder.as_mut() {
+        rec.after_step(sim);
+    }
+    if let Some(p) = playback.as_mut() {
+        while p.next < p.checksums.len() && p.checksums[p.next].0 <= sim.tick {
+            let (t, c) = p.checksums[p.next];
+            p.next += 1;
+            if t == sim.tick && c != sim.checksum() && p.status == ReplayStatus::Matching {
+                p.status = ReplayStatus::Diverged { tick: t };
+            }
+        }
+    }
+}
+
+/// The skip-ahead: runs the simulation flat out for up to `SKIP_BUDGET_MS` of real time this frame.
+fn skip_ahead(link: &mut SimLink) {
+    let start = Instant::now();
+    let end_tick = link.playback.as_ref().map(|p| p.end_tick).unwrap_or(u64::MAX);
+    let SimLink { sim, recorder, playback, .. } = link;
+    let stop = sim.skip(
+        |s| s.tick < end_tick && start.elapsed().as_secs_f64() * 1000.0 < SKIP_BUDGET_MS,
+        |s| after_update(s, recorder, playback),
+    );
+    link.previous.clear();
+    link.previous.extend(link.sim.soldiers.iter().map(|s| (s.x, s.y)));
+    link.alpha = 1.0;
+    link.accumulator = 0.0;
+    if let Some(events) = stop {
+        link.react(&events);
+    }
+}
+
 /// Runs as many ticks as the elapsed time and game speed call for.
 fn advance_simulation(time: Res<Time>, mut link: ResMut<SimLink>) {
+    if link.dawn_screen {
+        link.paused = true;
+    }
     if link.paused {
         link.alpha = 1.0;
+        return;
+    }
+    if link.skipping {
+        skip_ahead(&mut link);
         return;
     }
     if let Some(p) = &link.playback
@@ -184,23 +310,20 @@ fn advance_simulation(time: Res<Time>, mut link: ResMut<SimLink>) {
         frame_sim_ms += ms;
         link.tick_ms = if link.tick_ms == 0.0 { ms } else { link.tick_ms * 0.95 + ms * 0.05 };
         link.worst_window.push(ms);
-        if let Some(rec) = link.recorder.as_mut() {
-            rec.after_step(&link.sim);
+        after_update(&link.sim, &mut link.recorder, &mut link.playback);
+        link.accumulator -= dt;
+        ran += 1;
+        if link.playback.as_ref().is_some_and(|p| link.sim.tick >= p.end_tick) {
+            break;
         }
-        if let Some(p) = link.playback.as_mut() {
-            while p.next < p.checksums.len() && p.checksums[p.next].0 <= link.sim.tick {
-                let (t, c) = p.checksums[p.next];
-                p.next += 1;
-                if t == link.sim.tick && c != link.sim.checksum() && p.status == ReplayStatus::Matching {
-                    p.status = ReplayStatus::Diverged { tick: t };
-                }
-            }
-            if link.sim.tick >= p.end_tick {
+        // Dawn, a new contact or an arrival: stop on this exact update.
+        if !link.sim.events.is_empty() {
+            let events = link.sim.events.clone();
+            if link.react(&events) {
+                link.accumulator = 0.0;
                 break;
             }
         }
-        link.accumulator -= dt;
-        ran += 1;
     }
     if ran == max_ticks {
         link.accumulator = link.accumulator.min(dt);
