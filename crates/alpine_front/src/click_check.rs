@@ -2,31 +2,39 @@
 //! can be played the same way. In whichever view the game starts in, it:
 //! 1. left-clicks an Austro-Hungarian squad (its flag on the map, one of its men in 3D),
 //! 2. right-clicks the ground about 150 m from the squad (a point the camera can see) to send it there,
-//! 3. presses M to switch views.
+//! 3. on the map only: zooms with the mouse wheel (the point under the cursor must stay put), holds W
+//!    (the map must move north) and right-drags (the map must follow the mouse, with no order given),
+//! 4. presses M to switch views.
 //!
 //! The clicks go through the same code as the real mouse (`orders.rs`), with a stand-in cursor
 //! position, so the real mouse pointer is never moved. Prints one CLICK-CHECK line and exits.
 
-use crate::map_view::{FLAG_PICK_OFFSET_PX, MapView, squad_anchor};
+use crate::map_view::{FLAG_PICK_OFFSET_PX, MapView, map_controls, squad_anchor};
 use crate::orders::{CursorOverride, clicks};
 use crate::sim_link::SimLink;
 use crate::terrain_view::{ground_hit, to_world};
 use crate::units::{Selection, marker_scale};
 use crate::view::{MapCam, TerrainCam, ViewMode, switch_key};
 use alpine_sim::sim::Side;
+use bevy::input::mouse::{AccumulatedMouseMotion, AccumulatedMouseScroll, MouseScrollUnit};
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 
 const SETTLE_S: f32 = 3.0;
 /// The order must land within this many metres of the point clicked.
 const ORDER_TOLERANCE_M: f32 = 3.0;
+/// First step of the map-moving checks, and of pressing M.
+const MOVE: u32 = 10;
+const SWITCH: u32 = 30;
+/// How far the right-drag check moves the mouse, in pixels.
+const DRAG_PX: f32 = 60.0;
 
 pub struct ClickCheckPlugin;
 
 impl Plugin for ClickCheckPlugin {
     fn build(&self, app: &mut App) {
         if std::env::var("ALPINE_CLICK_CHECK").is_ok() {
-            app.add_systems(Update, run.before(clicks).before(switch_key));
+            app.add_systems(Update, run.before(clicks).before(switch_key).before(map_controls));
         }
     }
 }
@@ -37,6 +45,12 @@ struct Check {
     squad: Option<u32>,
     target: (f32, f32),
     started_in: Option<ViewMode>,
+    /// The map before a moving check: where it looked and how close.
+    before: Option<MapView>,
+    /// The point the stand-in cursor rests on during the map-moving checks, and the ground under it.
+    rest: Vec2,
+    under: Vec2,
+    message_before: Option<String>,
     results: Vec<String>,
     passed: bool,
 }
@@ -108,6 +122,8 @@ fn run(
     terrain_cam: Single<Cam, With<TerrainCam>>,
     map_cam: Single<Cam, With<MapCam>>,
     mut cursor: ResMut<CursorOverride>,
+    mut scroll: ResMut<AccumulatedMouseScroll>,
+    mut motion: ResMut<AccumulatedMouseMotion>,
     mut mouse: ResMut<ButtonInput<MouseButton>>,
     mut keys: ResMut<ButtonInput<KeyCode>>,
     mut check: Local<Check>,
@@ -132,8 +148,7 @@ fn run(
                 None => {
                     c.results.push("select=FAIL (no Austro-Hungarian squad clearly on screen)".into());
                     c.passed = false;
-                    keys.press(KeyCode::KeyM);
-                    c.step = 5;
+                    c.step = SWITCH;
                     return;
                 }
             }
@@ -177,8 +192,7 @@ fn run(
                 None => {
                     c.results.push("order=FAIL (no visible point near the squad)".into());
                     c.passed = false;
-                    keys.press(KeyCode::KeyM);
-                    c.step = 5;
+                    c.step = SWITCH;
                     return;
                 }
             }
@@ -201,11 +215,71 @@ fn run(
                     c.passed = false;
                 }
             }
+            c.step = if *mode == ViewMode::Map { MOVE } else { SWITCH };
+            return;
+        }
+        // Mouse wheel: one notch in, about a point right of the centre.
+        MOVE => {
+            c.rest = Vec2::new(window.width() * 0.65, window.height() * 0.45);
+            c.under = map_cam.0.viewport_to_world_2d(map_cam.1, c.rest).unwrap_or_default();
+            c.before = Some(*map);
+            cursor.0 = Some(c.rest);
+            scroll.delta = Vec2::new(0.0, 1.0);
+            scroll.unit = MouseScrollUnit::Line;
+        }
+        n if n == MOVE + 1 => {
+            let before = c.before.unwrap();
+            let now_under = map_cam.0.viewport_to_world_2d(map_cam.1, c.rest).unwrap_or_default();
+            let drift_px = now_under.distance(c.under) / map.scale;
+            let ratio = map.scale / before.scale;
+            if (ratio - 0.8).abs() < 0.01 && drift_px < 1.5 {
+                c.results.push(format!("zoom=ok (closer by {:.0}%, the point under the cursor moved {drift_px:.1} px)", (1.0 - ratio) * 100.0));
+            } else {
+                c.results.push(format!("zoom=FAIL (scale x{ratio:.3}, the point under the cursor moved {drift_px:.1} px)"));
+                c.passed = false;
+            }
+            c.before = Some(*map);
+            keys.press(KeyCode::KeyW);
+        }
+        // W held for ten frames, then released.
+        n if n == MOVE + 12 => {
+            keys.release(KeyCode::KeyW);
+            let before = c.before.unwrap();
+            let moved = map.centre - before.centre;
+            if moved.y > 0.0 && moved.x.abs() < 0.01 {
+                c.results.push(format!("keys=ok (W moved the map {:.0} m north)", moved.y));
+            } else {
+                c.results.push(format!("keys=FAIL (W moved the map by {moved:?})"));
+                c.passed = false;
+            }
+        }
+        // Right-drag: press, move the mouse, release.
+        n if n == MOVE + 13 => {
+            c.before = Some(*map);
+            c.message_before = link.last_message.clone();
+            mouse.press(MouseButton::Right);
+        }
+        n if n == MOVE + 14 => motion.delta = Vec2::new(DRAG_PX, 0.0),
+        n if n == MOVE + 15 => mouse.release(MouseButton::Right),
+        n if n == MOVE + 16 => {
+            let before = c.before.unwrap();
+            let moved_px = (before.centre.x - map.centre.x) / map.scale;
+            let ordered = link.last_message != c.message_before;
+            if (moved_px - DRAG_PX).abs() < 0.5 && !ordered {
+                c.results.push(format!("drag=ok (the map followed the mouse {moved_px:.0} px, no order given)"));
+            } else {
+                c.results.push(format!("drag=FAIL (moved {moved_px:.1} px, order given: {ordered})"));
+                c.passed = false;
+            }
+            c.step = SWITCH;
+            return;
+        }
+        SWITCH => {
             cursor.0 = None;
             keys.press(KeyCode::KeyM);
         }
-        5 => keys.release(KeyCode::KeyM),
-        6 => {
+        n if n == SWITCH + 1 => keys.release(KeyCode::KeyM),
+        n if n == SWITCH + 2 => {
             let started = c.started_in.unwrap_or(*mode);
             if *mode != started {
                 c.results.push(format!("switch=ok (now {})", view_name(*mode)));

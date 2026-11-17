@@ -126,8 +126,9 @@ Technical choices for the map (Claude's call, recorded so they can be revisited)
   any one army's official symbol set.
 - **Forest on the map is decoration**, painted below about 1,900 m like the 3D view's green: the
   simulation has no forest yet.
-- **A click check** (`ALPINE_CLICK_CHECK=1`) clicks a squad, orders it and switches views with M,
-  through the same code as the real mouse, so both views are proven playable without a person.
+- **A click check** (`ALPINE_CLICK_CHECK=1`) clicks a squad, orders it, on the map zooms with the
+  wheel, moves with W and right-drags, and switches views with M, through the same code as the real
+  mouse and keys, so both views are proven playable without a person.
 
 ### Sources used
 

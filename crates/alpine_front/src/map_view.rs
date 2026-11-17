@@ -8,7 +8,7 @@
 //! W A S D or right-drag move the map, the mouse wheel zooms about the cursor, Q / E zoom out / in.
 
 use crate::Options;
-use crate::orders::Clicks;
+use crate::orders::{Clicks, CursorOverride};
 use crate::overlays::{Stroke, StrokeKind, Strokes};
 use crate::sim_link::SimLink;
 use crate::terrain_view::{FLAG_CONTOURS, TerrainHandles, TerrainSettings, spawn_terrain};
@@ -357,7 +357,7 @@ fn furthest_scale(t: &Terrain, window: &Window) -> f32 {
 }
 
 #[allow(clippy::too_many_arguments)] // a Bevy system: each argument is a piece of game state it reads
-fn map_controls(
+pub fn map_controls(
     time: Res<Time>,
     options: Res<Options>,
     mode: Res<ViewMode>,
@@ -367,6 +367,7 @@ fn map_controls(
     scroll: Res<AccumulatedMouseScroll>,
     egui: Res<EguiWantsInput>,
     clicks: Res<Clicks>,
+    cursor_override: Res<CursorOverride>,
     link: Res<SimLink>,
     window: Single<&Window, With<PrimaryWindow>>,
     mut view: ResMut<MapView>,
@@ -414,7 +415,7 @@ fn map_controls(
             MouseScrollUnit::Pixel => scroll.delta.y / 40.0,
         };
         let new_scale = (v.scale * 0.8f32.powf(notches)).clamp(CLOSEST_M_PER_PX, furthest_scale(t, &window));
-        if let Some(c) = window.cursor_position() {
+        if let Some(c) = cursor_override.0.or(window.cursor_position()) {
             let from_centre = Vec2::new(c.x - window.width() / 2.0, window.height() / 2.0 - c.y);
             let under = v.centre + from_centre * v.scale;
             v.centre = under - from_centre * new_scale;
