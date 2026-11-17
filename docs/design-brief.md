@@ -166,9 +166,24 @@ use no more than half the time it has, and each frame must finish well inside a 
 room for an RTX 3070 class card. These margins are estimates, not measurements on real target
 hardware.
 
+- **Simulation check.** Measured at the fastest game speed the player can select, which is 16× in
+  step 1 and is raised in step 2 when quiet weeks need fast-forwarding. The report also states how
+  much faster than real time the simulation could run.
+- **Frame check.** 30 frames per second on an RTX 3070. The development PC's RTX 5090 is taken as
+  about three times faster (an estimate from public benchmarks), so 99% of frames must finish within
+  11 ms here, measured at 2560×1440 with vsync off while the camera flies over the terrain.
+
 1. **Pipeline.** Col di Lana terrain on screen, 200 soldiers (as simple shapes) moving across it
    with correct line of sight, a free camera, the debug overlays, and a replay from a seed. No
    combat.
+   - Map: 6 × 6 km centred on the summit, from the TINITALY 10 m elevation model. It shows today's
+     summit; the pre-1916 summit is still an open question.
+   - About 150 Austro-Hungarians on the summit and 50 Italians on the slopes below, in squads of
+     about 10. The player clicks a squad and a destination; Italian squads follow seeded patrol
+     routes.
+   - Line of sight decides who has spotted whom, and the map shows it. There is no shooting.
+   - Overlays: contour lines, "what this observer can see" shading, spotting lines, squad routes,
+     and ground too steep to walk.
 2. **A week on the summit, rough.** The dawn orders screen, work roster, carrying parties, simple
    cold and hunger, falling snow, and one night raid with basic shooting and a simple enemy officer.
    The whole game in miniature; crude is fine and is not polished.

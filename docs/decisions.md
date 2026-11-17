@@ -34,6 +34,27 @@ supply and digging at night; snow blindness and frostbite; the silence when enem
 cableway as the position's weak point; reports slanted by officer traits; the mass avalanches of
 December 1916 as a scenario.
 
+## 2026-11-17 — Build step 1 settings
+
+| # | Topic | Chosen | Rejected | Why |
+| --- | --- | --- | --- | --- |
+| 13 | Map size | 6 × 6 km centred on the summit | 4 × 4 km; 10 × 10 km | Covers the summit, Monte Sief, the north slopes to Settsass and the south slopes the Italian attacks came up. 4 km cuts off the valley floor; 10 km is mostly empty scenery that eats the speed margin. The sector map in step 10 re-runs the same script on a larger area |
+| 14 | Elevation data | TINITALY 1.1, 10 m grid (INGV, CC BY 4.0) | Copernicus 30 m (too coarse for line of sight between soldiers); Veneto regional 10 m (same resolution, harder to download) | Free, 10 m, one script fetches it. Checked: Col di Lana 2,460 m and Monte Sief 2,425 m sit where the maps put them |
+| 15 | Who is on the map | About 150 Austro-Hungarians and 50 Italians, spotting only; the player orders Austrian squads by clicking, Italians follow seeded patrols | One side only; both sides fully automatic | Line of sight gets a visible job that can be checked by eye, and the step-2 raid builds on it. Fully automatic would leave no way to set up a situation to test |
+| 16 | Frame limit | 30 fps on an RTX 3070, taken as 11 ms per frame on the development PC | 60 fps (about 5.5 ms); 60 fps with extra margin (about 4 ms) | Director's choice: room for terrain detail and many soldiers, as is normal for strategy games |
+| 17 | Speed for the simulation check | 16×, the top speed in step 1; raised in step 2 | 60× from the start; 4× | A meaningful bar now, set properly once there is a real week to fast-forward |
+| 18 | Git | Finished work goes straight to main, committed and pushed at the end of each batch | One branch per build step | Simplest for a one-person project with no code review |
+| 19 | Tests that depend on the summit's shape | Describe today's ground; re-measured and re-approved when the pre-1916 summit is rebuilt | Tying each test to a terrain-file version with automatic skipping; rebuilding the summit before step 1 | Nothing is decided early, and the rebuild stays where the build order put it |
+
+Technical choices made while building step 1 (Claude's call, recorded so they can be revisited):
+
+- **Terrain detail.** The whole 6 km map is drawn at full 10 m detail, split into chunks, with no
+  coarser distant versions yet. At this size full detail is cheap, and it guarantees that line of
+  sight uses exactly the ground you see. The brief's level-of-detail system arrives with the larger
+  map in step 10.
+- **Earth curvature counts in line of sight**, with the standard allowance for air bending light. It
+  hides about 1.7 m at 5 km, which is more than a standing man.
+
 ### Sources used
 
 - [Col di Lana (Wikipedia)](https://en.wikipedia.org/wiki/Col_di_Lana)
@@ -44,3 +65,7 @@ December 1916 as a scenario.
 - [Lagazuoi open-air museum](https://lagazuoi.it/Eng/page7-Open-air-Museum-of-the-Lagazuoi)
 - [Veneto terrain model (10 m mountain grid)](https://www.regione.veneto.it/web/agricoltura-e-foreste/modello-digitale-del-terreno)
 - [Veneto laser-scan data](https://www.regione.veneto.it/web/agricoltura-e-foreste/modelli-digitali-delle-chiome)
+- Elevation data used in the game (CC BY 4.0, citation required): Tarquini S., I. Isola, M. Favalli,
+  A. Battistini, G. Dotta (2023). TINITALY, a digital elevation model of Italy with a 10 meters cell
+  size (Version 1.1). Istituto Nazionale di Geofisica e Vulcanologia (INGV).
+  https://doi.org/10.13127/tinitaly/1.1

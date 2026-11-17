@@ -1,0 +1,67 @@
+# Alpine Front tuning numbers.
+#
+# Plain values, safe to edit. The simulation and the scenario tests read them from here, so a change
+# shows up in the next test report. The locked test expectations are in docs/scenario-tests.md.
+
+[time]
+# Simulation updates per game second.
+ticks_per_second = 10
+# Fastest game speed the player can choose. The speed pass measures the simulation at this speed.
+max_speed = 16
+
+[threads]
+# Worker threads the simulation splits its work across.
+simulation_threads = 8
+
+[walking]
+# Walking speed follows Tobler's hiking rule: on ground rising by `grade` (metres up per metre
+# along), speed = peak_kmh * exp(-steepness * |grade + offset|). Fastest on a gentle downhill.
+tobler_peak_kmh = 6.0
+tobler_steepness = 3.5
+tobler_offset = 0.05
+# Soldiers carry kit, so they walk at this fraction of Tobler's unladen speed.
+load_factor = 0.7
+# Ground steeper than this cannot be walked on (climbing comes later).
+steepest_walkable_deg = 45.0
+
+[squad]
+men_per_squad = 10
+# Spacing between men when the squad has arrived and stands in formation.
+formation_spacing_m = 2.5
+# A man counts as arrived when this close to his place in the formation.
+arrival_radius_m = 0.3
+# How long a squad leader takes to work out a route after receiving an order.
+order_delay_s = 1.0
+
+[soldier]
+# Men try to keep at least this far from each other while moving.
+personal_space_m = 1.0
+# Height of a standing man's eyes, and of the point an observer must see to spot him (his head).
+eye_height_m = 1.6
+head_height_m = 1.6
+
+[spotting]
+# Clear weather, daylight, naked eye: a man further away than this is not spotted even in plain view.
+spotting_range_m = 1500.0
+# Each man looks around once per this many seconds (spread across ticks).
+look_interval_s = 1.0
+
+[line_of_sight]
+# Earth curvature hides distant ground; air bends light back down by this fraction (standard value).
+refraction_coefficient = 0.13
+earth_radius_m = 6371000.0
+
+[scenario]
+# Step-1 scenario: Austro-Hungarian squads start near the summit, Italian squads on the slopes below.
+austrian_squads = 15
+italian_squads = 5
+# Austrians start within this distance of the summit.
+austrian_start_radius_m = 400.0
+# Italians start, and patrol, between these distances from the summit on its southern side,
+# below this height.
+italian_zone_min_m = 1000.0
+italian_zone_max_m = 2600.0
+italian_zone_max_height_m = 2000.0
+# An Italian squad waits this long (game minutes, chosen at random in the range) before moving on.
+patrol_pause_min_minutes = 2.0
+patrol_pause_max_minutes = 10.0

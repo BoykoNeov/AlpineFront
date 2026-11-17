@@ -1,0 +1,18 @@
+# Game terrain cut from TINITALY 1.1 by tools/prepare_terrain.py. Do not edit by hand.
+name = "Col di Lana"
+heights_file = "col_di_lana.heights"
+# Grid points per side. Point (0, 0) is the south-west corner; rows run south to north.
+columns = 601
+rows = 601
+spacing_m = 10.0
+# Real-world position of the south-west grid point (UTM zone 32N, EPSG:32632).
+utm_zone = "32N"
+south_west_easting = 724085.0
+south_west_northing = 5150485.0
+south_west_latitude = 46.470675
+south_west_longitude = 11.918858
+lowest_m = 1139.46
+highest_m = 2574.96
+source = "TINITALY 1.1, tiles w51570, w51070"
+licence = "CC BY 4.0"
+citation = "Tarquini S., I. Isola, M. Favalli, A. Battistini, G. Dotta (2023). TINITALY, a digital elevation model of Italy with a 10 meters cell size (Version 1.1). Istituto Nazionale di Geofisica e Vulcanologia (INGV). https://doi.org/10.13127/tinitaly/1.1"

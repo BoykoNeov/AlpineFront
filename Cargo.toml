@@ -1,0 +1,21 @@
+[workspace]
+resolver = "3"
+members = ["crates/sim", "crates/game"]
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.97.1"
+license = "LicenseRef-AllRightsReserved"
+publish = false
+
+[workspace.dependencies]
+# Bevy is pinned to one exact version (see docs/design-brief.md, Risks: engine churn).
+bevy = { version = "=0.20.1" }
+bevy_egui = { version = "=0.43.1" }
+
+# Optimise dependencies even in debug builds, so the game is usable while developing.
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 3
