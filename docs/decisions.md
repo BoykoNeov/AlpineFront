@@ -45,6 +45,9 @@ December 1916 as a scenario.
 | 17 | Speed for the simulation check | 16×, the top speed in step 1; raised in step 2 | 60× from the start; 4× | A meaningful bar now, set properly once there is a real week to fast-forward |
 | 18 | Git | Finished work goes straight to main, committed and pushed at the end of each batch | One branch per build step | Simplest for a one-person project with no code review |
 | 19 | Tests that depend on the summit's shape | Describe today's ground; re-measured and re-approved when the pre-1916 summit is rebuilt | Tying each test to a terrain-file version with automatic skipping; rebuilding the summit before step 1 | Nothing is decided early, and the rebuild stays where the build order put it |
+| 20 | What the simulation speed check measures | The simulation running in real time at the top game speed; the flat-out run is reported for information | The flat-out run as pass/fail (step 1 would fail until no update ever waits for a route) | Measures what the player feels. Decided after the first run failed on 50 ms waits for routes. The waits return when step 2 raises the top speed, so step 2 has to deal with them |
+| 21 | Route-finding | One route per squad, covering only the ground around its men and their way | One whole-map route per destination, shared by every squad going there (the brief's original wording); both combined now | Cheaper in the common case of short moves; all locked tests unchanged. Sharing comes back only if large forces show the need |
+| 22 | When the pre-1916 summit is rebuilt | At the start of step 2 | With the mines (step 8); with craters (step 5) | Step 2's week and night raid happen on the summit, so its shape decides cover and sight lines where play happens; tuning on post-war ground would be redone |
 
 Technical choices made while building step 1 (Claude's call, recorded so they can be revisited):
 

@@ -87,7 +87,9 @@ asks the renderer for anything.
 **Performance approach**
 
 - Squads decide and individuals execute.
-- Flow-field pathfinding shared by units with the same destination.
+- Flow-field pathfinding: each squad gets its own route, worked out only over the ground around its
+  men and their way to the destination. Sharing routes between squads is added only if large forces
+  show the need.
 - A spatial grid for neighbour and line-of-sight queries.
 - Staggered updates: not every soldier thinks every tick.
 - Slow systems such as disease, food and morale drift tick once per game-hour.
@@ -180,14 +182,16 @@ hardware.
    with correct line of sight, a free camera, the debug overlays, and a replay from a seed. No
    combat.
    - Map: 6 × 6 km centred on the summit, from the TINITALY 10 m elevation model. It shows today's
-     summit; the pre-1916 summit is still an open question.
+     summit, crater included; the pre-1916 summit is rebuilt at the start of step 2.
    - About 150 Austro-Hungarians on the summit and 50 Italians on the slopes below, in squads of
      about 10. The player clicks a squad and a destination; Italian squads follow seeded patrol
      routes.
    - Line of sight decides who has spotted whom, and the map shows it. There is no shooting.
    - Overlays: contour lines, "what this observer can see" shading, spotting lines, squad routes,
      and ground too steep to walk.
-2. **A week on the summit, rough.** The dawn orders screen, work roster, carrying parties, simple
+2. **A week on the summit, rough.** First, the summit is rebuilt as it was before the April 1916
+   mine (from old photos and maps), and the summit sight tests are re-measured and re-approved. Then
+   the dawn orders screen, work roster, carrying parties, simple
    cold and hunger, falling snow, and one night raid with basic shooting and a simple enemy officer.
    The whole game in miniature; crude is fine and is not polished.
 3. **Fire and morale.** Small-arms combat, suppression, cover, and soldiers who break.
@@ -224,5 +228,5 @@ weather.
 **Open questions**
 
 - [ ] What did the Col di Lana summit look like before the April 1916 mine? Rebuild it from old
-      photos and maps.
+      photos and maps (scheduled for the start of step 2).
 - [ ] Does Veneto's laser-scan data cover Col di Lana in finer detail than its 10 m terrain grid?
