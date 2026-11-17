@@ -72,7 +72,7 @@ Places are the lookout posts and shelters in `data/places/col_di_lana_1916.toml`
 | --- | --- |
 | 22 | **Shelter hides both ways.** A squad resting in a shelter sees no enemy and is never seen by one, day or night. |
 | 23 | **Guards watch.** By day a squad at a south-facing post spots an Italian squad in plain view on the southern slope at the full 1,500 m. |
-| 24 | **Shifts change themselves.** Within 1 game minute of dusk, and of the morning "Carry on", every squad on the roster sets off for its new place, and each gets there within 15 game minutes. |
+| 24 | **Shifts change themselves.** Within 1 game minute of dusk, and of the morning "Carry on", every squad on the roster sets off for its new place, and each gets there within 15 game minutes. A squad the player sent far away takes as long as the walk back takes. *(Note added with the director's approval on 2026-11-17.)* |
 | 25 | **Tiredness builds and recovers.** A man who guards from dawn to dusk ends the day tired but not exhausted. One who guards around the clock is exhausted by the next dawn. One who guards by day and sleeps the night is fresh again at dawn. |
 | 26 | **Tired men see and walk less.** An exhausted guard spots at half the distance a fresh one does, by day and by night. An exhausted squad takes about 1.4 times as long on the long climb. |
 | 27 | **Orders beat the roster.** A squad sent elsewhere leaves its duty, stays where it was sent, and takes up its duty again at the next dusk or dawn, or when "Back to duty" is pressed. |
