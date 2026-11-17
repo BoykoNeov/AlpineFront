@@ -9,6 +9,7 @@ pub mod hash;
 pub mod los;
 pub mod replay;
 pub mod report;
+pub mod roster;
 pub mod rng;
 pub mod scenario;
 pub mod sim;

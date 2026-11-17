@@ -11,6 +11,7 @@
 //! The clicks go through the same code as the real mouse (`orders.rs`), with a stand-in cursor
 //! position, so the real mouse pointer is never moved. Prints one CLICK-CHECK line and exits.
 
+use crate::camera::FlyCam;
 use crate::map_view::{FLAG_PICK_OFFSET_PX, MapView, map_controls, squad_anchor};
 use crate::orders::{CursorOverride, clicks};
 use crate::sim_link::SimLink;
@@ -48,6 +49,9 @@ impl Plugin for ClickCheckPlugin {
 #[derive(Default)]
 struct Check {
     step: u32,
+    /// Frames left to wait after bringing the map or the 3D camera in close to the summit, where the
+    /// squads stand close together at their posts (`None` before moving in).
+    zoom_wait: Option<u32>,
     squad: Option<u32>,
     target: (f32, f32),
     started_in: Option<ViewMode>,
@@ -82,10 +86,12 @@ fn on_screen(mode: ViewMode, link: &SimLink, terrain: Cam, map: Cam, (x, y): (f3
 #[allow(clippy::too_many_arguments)]
 fn choose(mode: ViewMode, link: &SimLink, map: &MapView, window: &Window, terrain: Cam, map_cam: Cam) -> Option<(u32, Vec2)> {
     let sim = &link.sim;
-    // Each squad's click point: the flag on the map, the first man in 3D.
+    // Each squad's click point: the flag on the map, the first man in 3D. Squads inside a shelter
+    // are not drawn and cannot be clicked.
     let points: Vec<(u32, Side, Vec2)> = sim
         .squads
         .iter()
+        .filter(|q| !q.inside)
         .filter_map(|q| {
             let p = match mode {
                 ViewMode::Map if !map.shows_men() => {
@@ -125,7 +131,7 @@ fn run(
     time: Res<Time>,
     mode: Res<ViewMode>,
     link: Res<SimLink>,
-    map: Res<MapView>,
+    mut map: ResMut<MapView>,
     selection: Res<Selection>,
     window: Single<&Window, With<PrimaryWindow>>,
     terrain_cam: Single<Cam, With<TerrainCam>>,
@@ -137,6 +143,7 @@ fn run(
     mut keys: ResMut<ButtonInput<KeyCode>>,
     mut check: Local<Check>,
     mut exit: MessageWriter<AppExit>,
+    mut fly: Single<(&mut Transform, &mut FlyCam), With<TerrainCam>>,
 ) {
     if time.elapsed_secs() < SETTLE_S {
         return;
@@ -172,7 +179,32 @@ fn run(
         0 => {
             c.started_in = Some(*mode);
             c.passed = !c.results.iter().any(|r| r.contains("FAIL"));
-            match choose(*mode, &link, &map, &window, terrain_cam, map_cam) {
+            if let Some(n) = c.zoom_wait
+                && n > 0
+            {
+                c.zoom_wait = Some(n - 1);
+                return;
+            }
+            let chosen = choose(*mode, &link, &map, &window, terrain_cam, map_cam);
+            // From afar the squads at their posts stand too close to tell apart: move in on the
+            // summit, as a player would, and try again.
+            if chosen.is_none() && c.zoom_wait.is_none() {
+                match *mode {
+                    ViewMode::Map => *map = MapView { centre: Vec2::new(0.0, 0.0), scale: 0.8 },
+                    ViewMode::Terrain => {
+                        let (tf, cam) = &mut *fly;
+                        let pos = to_world(-60.0, -260.0, link.sim.terrain.height(-60.0, -260.0) + 120.0);
+                        let dir = (to_world(0.0, 0.0, link.sim.terrain.height(0.0, 0.0)) - pos).normalize();
+                        tf.translation = pos;
+                        cam.yaw = (-dir.x).atan2(-dir.z);
+                        cam.pitch = dir.y.asin();
+                        tf.rotation = Quat::from_euler(EulerRot::YXZ, cam.yaw, cam.pitch, 0.0);
+                    }
+                }
+                c.zoom_wait = Some(3);
+                return;
+            }
+            match chosen {
                 Some((squad, p)) => {
                     c.squad = Some(squad);
                     cursor.0 = Some(p);

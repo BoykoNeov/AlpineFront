@@ -15,7 +15,7 @@
 //! The last group is for automated visual checks: fast-forward the simulation, place the 3D camera
 //! (simulation metres: east, north, height, then the point to look at) or the map (the point at the
 //! centre, then how many metres the window spans), switch overlays on (contours, steep, viewshed,
-//! routes, nospotting), select a soldier, save a screenshot and exit.
+//! routes, nospotting, noplaces), select a soldier, save a screenshot and exit.
 
 mod camera;
 mod click_check;
@@ -23,6 +23,7 @@ mod frame_check;
 mod map_view;
 mod orders;
 mod overlays;
+mod places_view;
 mod shots;
 mod sim_link;
 mod terrain_view;
@@ -164,6 +165,7 @@ fn main() {
             camera::CameraPlugin,
             orders::OrdersPlugin,
             overlays::OverlaysPlugin,
+            places_view::PlacesViewPlugin,
             ui::UiPlugin,
             frame_check::FrameCheckPlugin,
             shots::ShotsPlugin,

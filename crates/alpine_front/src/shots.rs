@@ -28,6 +28,7 @@ fn apply_options(options: Res<Options>, link: Res<SimLink>, mut overlays: ResMut
                 "steep" => overlays.steep = true,
                 "viewshed" => overlays.viewshed = true,
                 "routes" => overlays.routes = true,
+                "noplaces" => overlays.places = false,
                 "nospotting" => overlays.spotting = SpotLines::Off,
                 "squadspotting" => overlays.spotting = SpotLines::SelectedSquad,
                 _ => warn!("unknown overlay '{item}'"),

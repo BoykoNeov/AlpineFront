@@ -12,7 +12,9 @@ use std::path::Path;
 use std::sync::Arc;
 
 /// 2: the replay records which ground it was played on (`terrain`).
-pub const FORMAT: u32 = 2;
+/// 3: step 2 has the work roster, and the replay keeps the places file (`places_toml`). Format-2
+/// step-1 replays still play (step 1 did not change); format-2 step-2 replays are refused.
+pub const FORMAT: u32 = 3;
 /// A checksum is recorded every this many ticks.
 pub const CHECK_EVERY: u64 = 10;
 
@@ -31,6 +33,9 @@ pub struct Replay {
     /// The weather diary's text at the time of recording (step 2 on; empty for step 1).
     #[serde(default)]
     pub weather_toml: String,
+    /// The places file's text at the time of recording (step 2 on, from format 3; empty otherwise).
+    #[serde(default)]
+    pub places_toml: String,
     /// How many ticks were recorded.
     pub ticks: u64,
     pub orders: Vec<LoggedOrder>,
@@ -44,7 +49,7 @@ pub struct Recorder {
 }
 
 impl Recorder {
-    pub fn new(scenario: &str, seed: u64, terrain: u64, tuning_toml: &str, weather_toml: &str) -> Self {
+    pub fn new(scenario: &str, seed: u64, terrain: u64, tuning_toml: &str, weather_toml: &str, places_toml: &str) -> Self {
         Recorder {
             replay: Replay {
                 format: FORMAT,
@@ -54,6 +59,7 @@ impl Recorder {
                 terrain,
                 tuning_toml: tuning_toml.to_string(),
                 weather_toml: weather_toml.to_string(),
+                places_toml: places_toml.to_string(),
                 ticks: 0,
                 orders: Vec::new(),
                 checksums: Vec::new(),
@@ -94,9 +100,11 @@ impl Replay {
     pub fn load(path: &Path) -> Result<Replay, String> {
         let text = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
         let r: Replay = ron::from_str(&text).map_err(|e| format!("{}: {e}", path.display()))?;
-        if r.format != FORMAT {
+        let old_step1 = r.format == 2 && (r.scenario == scenario::STEP1 || r.scenario == scenario::STEP1_AUTOPLAY);
+        if r.format != FORMAT && !old_step1 {
             return Err(format!(
-                "replay format {} not supported (expected {FORMAT}); replays saved before the map or game changed cannot be played",
+                "replay format {} not supported (expected {FORMAT}); replays saved before the map or game changed cannot be played \
+                 (step-2 replays from before the work roster included)",
                 r.format
             ));
         }
@@ -109,7 +117,7 @@ impl Replay {
             return Err("this replay was recorded on different ground (the map has changed since), so it cannot be played back".to_string());
         }
         let tuning = Tuning::from_toml(&self.tuning_toml)?;
-        let mut sim = scenario::build(&self.scenario, terrain, tuning, self.seed, pool, &self.weather_toml)?;
+        let mut sim = scenario::build(&self.scenario, terrain, tuning, self.seed, pool, &self.weather_toml, &self.places_toml)?;
         for o in &self.orders {
             sim.schedule(o.clone());
         }
@@ -147,7 +155,7 @@ mod tests {
         bumped[5] = 1.0;
         let other = Arc::new(Terrain::from_heights(4, 4, 10.0, bumped, 45.0));
         assert_ne!(flat.fingerprint(), other.fingerprint());
-        let rec = Recorder::new(scenario::STEP1, 1, flat.fingerprint(), "", "");
+        let rec = Recorder::new(scenario::STEP1, 1, flat.fingerprint(), "", "", "");
         let pool = Arc::new(rayon::ThreadPoolBuilder::new().num_threads(1).build().unwrap());
         let err = rec.replay.start(other, pool).err().expect("should refuse");
         assert!(err.contains("different ground"), "{err}");

@@ -1,13 +1,16 @@
-//! Screens (egui): the clock and time controls (with the skip-ahead), the dawn orders screen, the
-//! view switch, overlay switches, the selected squad, replays, help, and the map's scale bar.
+//! Screens (egui): the clock and time controls (with the skip-ahead), the dawn orders screen with
+//! the work roster, the view switch, overlay switches, the selected squad, replays, help, and the
+//! map's scale bar.
 
 use crate::map_view::MapView;
 use crate::overlays::{OverlaySettings, SpotLines, ViewshedState};
+use crate::places_view::FreeArea;
 use crate::sim_link::{OnEvent, ReplayStatus, SPEEDS, SimLink};
 use crate::units::Selection;
 use crate::view::ViewMode;
 use alpine_sim::report::morning_report;
-use alpine_sim::sim::{Side, Sim, SquadState};
+use alpine_sim::roster::{self, Duty, PlaceKind};
+use alpine_sim::sim::{Order, PLAYER_SIDE, Side, Sim, SquadState};
 use alpine_sim::sky;
 use bevy::diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin};
 use bevy::prelude::*;
@@ -148,8 +151,88 @@ fn clock_text(sim: &Sim) -> String {
     }
 }
 
-/// The dawn orders screen (decision 32): the morning report and "Carry on".
-fn dawn_window(ctx: &egui::Context, link: &mut SimLink) {
+/// A squad's men's average tiredness (0 fresh, 1 exhausted).
+fn squad_tiredness(sim: &Sim, q: u32) -> f32 {
+    let m = &sim.squads[q as usize].members;
+    m.iter().map(|&i| sim.soldiers[i as usize].tiredness).sum::<f32>() / m.len().max(1) as f32
+}
+
+/// Where a squad on the roster is and what it is doing, in a few words.
+fn squad_now(sim: &Sim, q: u32) -> String {
+    let sq = &sim.squads[q as usize];
+    if sq.detached {
+        return if sim.back_to_duty_pending(q as usize) { "returning to duty".into() } else { "sent away by you".into() };
+    }
+    match sq.post {
+        Some((p, _)) => {
+            let place = &sim.places[p];
+            let there = matches!(sq.state, SquadState::Arrived | SquadState::Idle);
+            match (place.kind, sq.inside, there) {
+                (PlaceKind::Shelter, true, _) => format!("asleep, {}", place.name),
+                (PlaceKind::Post, _, true) => format!("on guard, {}", place.name),
+                _ => format!("going to the {}", place.name),
+            }
+        }
+        None => "-".into(),
+    }
+}
+
+/// The work roster as a table (decisions 39 to 43): each of our squads with its day and night duty
+/// (click to change), what it is doing now and how tired its men are. Changes are orders, so they
+/// are recorded for the replay; given while time stands still they show at once and take effect
+/// when it moves on.
+fn roster_table(ui: &mut egui::Ui, link: &mut SimLink, selection: &mut Selection, id: &str) {
+    let sim = &link.sim;
+    let ours: Vec<u32> = sim.squads.iter().filter(|q| q.side == PLAYER_SIDE && q.roster.is_some()).map(|q| q.id).collect();
+    if ours.is_empty() {
+        return;
+    }
+    let mut orders = Vec::new();
+    let mut select = None;
+    egui::Grid::new(id).striped(true).spacing([10.0, 3.0]).show(ui, |ui| {
+        ui.strong("Squad");
+        ui.strong("By day");
+        ui.strong("By night");
+        ui.strong("Now");
+        ui.strong("Men");
+        ui.end_row();
+        for &q in &ours {
+            let Some(r) = sim.roster_shown(q as usize) else { continue };
+            if ui.selectable_label(selection.squad == Some(q), format!("{q}")).on_hover_text("Select this squad").clicked() {
+                select = Some(q);
+            }
+            for night in [false, true] {
+                let current = r.duty(night);
+                ui.horizontal(|ui| {
+                    for duty in [Duty::Guard, Duty::Rest] {
+                        if ui.selectable_label(current == duty, duty.word()).clicked() && current != duty {
+                            let mut nr = r;
+                            if night {
+                                nr.night = duty;
+                            } else {
+                                nr.day = duty;
+                            }
+                            orders.push(Order::SetRoster { squad: q, day: nr.day, night: nr.night });
+                        }
+                    }
+                });
+            }
+            ui.label(squad_now(sim, q));
+            ui.label(roster::tiredness_word(squad_tiredness(sim, q)));
+            ui.end_row();
+        }
+    });
+    for o in orders {
+        link.sim.order(o);
+    }
+    if let Some(q) = select {
+        selection.squad = Some(q);
+        selection.soldier = link.sim.squads[q as usize].members.first().copied();
+    }
+}
+
+/// The dawn orders screen (decision 32): the morning report, the work roster and "Carry on".
+fn dawn_window(ctx: &egui::Context, link: &mut SimLink, selection: &mut Selection) {
     let Some(report) = morning_report(&link.sim) else {
         link.carry_on();
         return;
@@ -159,7 +242,7 @@ fn dawn_window(ctx: &egui::Context, link: &mut SimLink) {
         .collapsible(false)
         .resizable(false)
         .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
-        .default_width(520.0)
+        .default_width(560.0)
         .show(ctx, |ui| {
             ui.heading(&report.title);
             ui.add_space(4.0);
@@ -170,6 +253,14 @@ fn dawn_window(ctx: &egui::Context, link: &mut SimLink) {
             ui.strong("Morning report");
             for line in &report.events {
                 ui.label(line);
+            }
+            if !link.sim.places.is_empty() {
+                ui.separator();
+                ui.strong("Work roster");
+                ui.small("Guards watch from the lookout posts; resting men sleep in the shelters, out of sight. Squads change over by themselves at dusk and dawn.");
+                egui::ScrollArea::vertical().max_height(330.0).show(ui, |ui| {
+                    roster_table(ui, link, selection, "dawn_roster");
+                });
             }
             ui.separator();
             ui.horizontal(|ui| {
@@ -185,15 +276,16 @@ fn dawn_window(ctx: &egui::Context, link: &mut SimLink) {
 }
 
 #[allow(clippy::too_many_arguments)] // a Bevy system: each argument is a piece of game state it reads
-fn panels(
+pub fn panels(
     mut contexts: EguiContexts,
     mut mode: ResMut<ViewMode>,
     map: Res<MapView>,
     mut link: ResMut<SimLink>,
     mut overlays: ResMut<OverlaySettings>,
-    selection: Res<Selection>,
+    mut selection: ResMut<Selection>,
     viewshed: Res<ViewshedState>,
     diagnostics: Res<DiagnosticsStore>,
+    mut free: ResMut<FreeArea>,
 ) -> Result {
     let ctx = contexts.ctx_mut()?;
     // Panels attach to a full-screen base area (as in bevy_egui's side_panel example).
@@ -205,7 +297,7 @@ fn panels(
     let fps = diagnostics.get(&FrameTimeDiagnosticsPlugin::FPS).and_then(|d| d.smoothed()).unwrap_or(0.0);
     let frame_ms = diagnostics.get(&FrameTimeDiagnosticsPlugin::FRAME_TIME).and_then(|d| d.smoothed()).unwrap_or(0.0);
 
-    egui::Panel::top("top").show(&mut screen, |ui| {
+    let top = egui::Panel::top("top").show(&mut screen, |ui| {
         ui.horizontal(|ui| {
             ui.strong("Col di Lana");
             ui.separator();
@@ -255,8 +347,15 @@ fn panels(
         });
     });
 
-    egui::Panel::left("side").default_size(320.0).resizable(true).show(&mut screen, |ui| {
+    let side = egui::Panel::left("side").default_size(320.0).resizable(true).show(&mut screen, |ui| {
         egui::ScrollArea::vertical().show(ui, |ui| {
+            if !link.sim.places.is_empty() {
+                egui::CollapsingHeader::new("Work roster").default_open(false).show(ui, |ui| {
+                    ui.small("Change any squad's duties at any time; squads change over by themselves at dusk and dawn.");
+                    roster_table(ui, &mut link, &mut selection, "side_roster");
+                });
+                ui.separator();
+            }
             if link.sim.clock.is_some() {
                 ui.heading("When something happens");
                 ui.small("A new enemy in sight, or a squad you sent arriving or stuck. The skip-ahead always stops.");
@@ -286,6 +385,9 @@ fn panels(
                 ui.radio_value(&mut o.spotting, SpotLines::Everyone, "everyone");
             });
             ui.checkbox(&mut o.routes, "Squad destinations and the selected squad's route");
+            if !link.sim.places.is_empty() {
+                ui.checkbox(&mut o.places, "Lookout posts and shelters");
+            }
 
             ui.separator();
             ui.heading("Spotting");
@@ -336,13 +438,36 @@ fn panels(
                         SquadState::Unreachable => "cannot get there".to_string(),
                     };
                     ui.label(format!("Status: {state}"));
+                    let mut back = false;
+                    if let Some(r) = sim.roster_shown(q as usize) {
+                        ui.label(format!("Duties: {} by day, {} by night. Now: {}.", r.day.word(), r.night.word(), squad_now(sim, q)));
+                        let t = squad_tiredness(sim, q);
+                        let lead = sq.members[0];
+                        ui.label(format!(
+                            "The men are {} ({:.0}% of the way to exhausted); they spot a man at up to {:.0} m now.",
+                            roster::tiredness_word(t),
+                            t * 100.0,
+                            sim.spotting_range_of(lead)
+                        ));
+                        if sq.detached && !sim.back_to_duty_pending(q as usize) {
+                            ui.small("Sent away by you: it takes up its duty again at the next dusk or dawn.");
+                            back = ui.button("Back to duty").clicked();
+                        }
+                    }
                     let sees: std::collections::BTreeSet<u32> =
                         sq.members.iter().flat_map(|&m| sim.soldiers[m as usize].sees.iter().copied()).collect();
                     ui.label(format!("Enemies in sight of the squad: {}", sees.len()));
                     if sq.side == Side::Austria {
-                        ui.small("Right-click the ground to send this squad there.");
+                        ui.small(if sq.roster.is_some() {
+                            "Right-click the ground to send this squad there; it leaves its duty until the next dusk or dawn."
+                        } else {
+                            "Right-click the ground to send this squad there."
+                        });
                     } else {
                         ui.small("Italian squads follow their own patrols.");
+                    }
+                    if back {
+                        link.sim.order(Order::BackToDuty { squad: q });
                     }
                 }
                 None => {
@@ -402,11 +527,13 @@ fn panels(
             });
         });
     });
+    let full = ctx.viewport_rect();
+    free.0 = Some(egui::Rect::from_min_max(egui::pos2(side.response.rect.max.x, top.response.rect.max.y), full.max));
     if *mode == ViewMode::Map {
         scale_bar(ctx, map.scale);
     }
     if link.dawn_screen {
-        dawn_window(ctx, &mut link);
+        dawn_window(ctx, &mut link, &mut selection);
     }
     Ok(())
 }

@@ -477,6 +477,10 @@ fn place_men(
     for (m, mut tf, mut vis, mut mat) in &mut q {
         let i = m.0 as usize;
         let s = &sim.soldiers[i];
+        if sim.squads[s.squad as usize].inside {
+            vis.set_if_neq(Visibility::Hidden);
+            continue;
+        }
         let (x, y) = link.drawn_position(i);
         tf.translation = Vec3::new(x, y, 2.0);
         tf.scale = Vec3::splat(radius);
@@ -499,7 +503,8 @@ fn place_flags(
 ) {
     let show = *mode == ViewMode::Map && !view.shows_men();
     for (f, mut tf, mut vis) in &mut flags {
-        if !show {
+        // A squad inside a shelter shows only in the shelter's name ("3 squads inside").
+        if !show || link.sim.squads[f.0 as usize].inside {
             vis.set_if_neq(Visibility::Hidden);
             continue;
         }

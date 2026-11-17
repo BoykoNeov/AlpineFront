@@ -19,6 +19,7 @@ struct World {
     tuning: Tuning,
     diary: Weather,
     diary_toml: String,
+    places_toml: String,
 }
 
 type Outcome = Result<String, String>;
@@ -69,7 +70,7 @@ fn twice_parallel<T: PartialEq + std::fmt::Debug + Send>(f: impl Fn() -> T + Syn
 fn test_dawn(w: &World) -> Outcome {
     // The game opens at first light on Monday (decision 37).
     let open = twice(|| {
-        let sim = scenario::step2(w.terrain.clone(), w.tuning.clone(), 1916, make_pool(2), false, w.diary.clone()).unwrap();
+        let sim = scenario::step2(w.terrain.clone(), w.tuning.clone(), 1916, make_pool(2), false, w.diary.clone(), &w.places_toml).unwrap();
         let first_dawn = sim.journal.iter().any(|e| e.tick == 0 && e.event == Event::Dawn { day: 0 });
         (sim.now().unwrap().long_date(), sim.now().unwrap().seconds.to_bits(), first_dawn)
     })?;
@@ -372,7 +373,7 @@ fn test_skip_events(w: &World) -> Outcome {
     // Part 1: daytime contacts. Five stops in a row from Monday's dawn, each checked against a
     // separate record of who was in sight.
     let contacts = twice(|| -> Result<Vec<(u64, String)>, String> {
-        let mut sim = scenario::step2(w.terrain.clone(), w.tuning.clone(), 1916, make_pool(8), false, w.diary.clone()).unwrap();
+        let mut sim = scenario::step2(w.terrain.clone(), w.tuning.clone(), 1916, make_pool(8), false, w.diary.clone(), &w.places_toml).unwrap();
         let mut last: BTreeMap<u32, u64> = BTreeMap::new();
         let mut stops = Vec::new();
         let mut missed: Option<String> = None;
@@ -411,7 +412,7 @@ fn test_skip_events(w: &World) -> Outcome {
     // walkable ground lies within 300 m. (A point off the map would not do: the game refuses such a
     // click, and the simulation sends the squad to the nearest edge instead.)
     let moves = twice(|| -> Result<(String, String), String> {
-        let mut sim = scenario::step2(w.terrain.clone(), w.tuning.clone(), 1916, make_pool(8), false, w.diary.clone()).unwrap();
+        let mut sim = scenario::step2(w.terrain.clone(), w.tuning.clone(), 1916, make_pool(8), false, w.diary.clone(), &w.places_toml).unwrap();
         let lead = &sim.soldiers[sim.squads[0].members[0] as usize];
         let (x, y) = (lead.x + 150.0, lead.y);
         sim.order(Order::Move { squad: 0, x, y });
@@ -459,7 +460,7 @@ fn test_skip_same(w: &World) -> Outcome {
     let day = 24 * 3600 * tps;
     let orders = [(600u64, 0u32, (150.0f32, -100.0f32)), (20_000, 5, (-300.0, 200.0)), (200_000, 0, (0.0, 0.0)), (500_000, 9, (300.0, 300.0))];
     let build = || {
-        let mut sim = scenario::step2(w.terrain.clone(), w.tuning.clone(), 1916, make_pool(4), false, w.diary.clone()).unwrap();
+        let mut sim = scenario::step2(w.terrain.clone(), w.tuning.clone(), 1916, make_pool(4), false, w.diary.clone(), &w.places_toml).unwrap();
         for &(tick, squad, (x, y)) in &orders {
             sim.schedule(LoggedOrder { tick, order: Order::Move { squad, x, y } });
         }
@@ -520,7 +521,8 @@ fn main() {
     let (tuning, _) = Tuning::load_default().expect("tuning file");
     let terrain = Arc::new(Terrain::load_col_di_lana(tuning.walking.steepest_walkable_deg).expect("terrain"));
     let (diary, diary_toml) = Weather::load_march_1916().expect("weather diary");
-    let world = World { terrain, tuning, diary, diary_toml };
+    let places_toml = alpine_sim::roster::load_col_di_lana_1916_text().expect("places file");
+    let world = World { terrain, tuning, diary, diary_toml, places_toml };
     let w = &world;
     let _ = &w.diary_toml;
 

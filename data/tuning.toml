@@ -95,3 +95,15 @@ overcast_light_factor = 0.05
 # The skip-ahead stops, and normal play drops to 1x, when our men see an enemy squad nobody had
 # seen for this long (decision 36).
 new_contact_after_unseen_minutes = 30.0
+
+[tiredness]
+# The work roster (decisions 39 and 43). A man tires while awake and recovers while asleep in a
+# shelter on rest duty. Only the player's men tire for now; the Italians follow scripted patrols.
+# Hours awake that take a fresh man to exhausted.
+hours_awake_to_exhausted = 18.0
+# Hours asleep that take an exhausted man to fresh.
+hours_asleep_to_fresh = 8.0
+# An exhausted man spots at this share of the light's spotting distance and walks at this share of
+# his speed; a less tired man in proportion (half as tired: three quarters of the distance).
+exhausted_spotting_factor = 0.5
+exhausted_walking_factor = 0.7

@@ -1,7 +1,8 @@
 //! The morning report shown on the dawn orders screen (decision 32): what the company commander is
 //! told at dawn about the last 24 hours. Plain sentences, built from the event journal.
 
-use crate::sim::{Event, PLAYER_SIDE, Sim};
+use crate::roster::{self, Duty};
+use crate::sim::{DayRecord, Event, PLAYER_SIDE, Sim};
 use crate::sky::{self, DUSK_ALTITUDE_DEG};
 
 pub struct MorningReport {
@@ -51,6 +52,7 @@ pub fn morning_report(sim: &Sim) -> Option<MorningReport> {
             "The first morning on the summit of Col di Lana. The Italians have been tunnelling toward it since mid-January."
                 .into(),
         );
+        roster_lines(sim, &mut events);
         return Some(MorningReport { title, weather, events });
     };
     let since = &sim.journal[prev_i + 1..last_i];
@@ -112,5 +114,85 @@ pub fn morning_report(sim: &Sim) -> Option<MorningReport> {
         let line = c.next().map(|f| f.to_uppercase().collect::<String>() + c.as_str()).unwrap_or_default();
         events.push(format!("{line}."));
     }
+    roster_lines(sim, &mut events);
     Some(MorningReport { title, weather, events })
+}
+
+/// "squads 0, 1 and 4" / "squad 3".
+fn squad_list(ids: &[u32]) -> String {
+    let names: Vec<String> = ids.iter().map(|i| i.to_string()).collect();
+    match names.len() {
+        0 => String::new(),
+        1 => format!("squad {}", names[0]),
+        n => format!("squads {} and {}", names[..n - 1].join(", "), names[n - 1]),
+    }
+}
+
+fn hours(minutes: u32) -> String {
+    format!("{:.0} h", minutes as f64 / 60.0)
+}
+
+/// The work roster's part of the report (decisions 39 to 43): what each squad did in the last 24
+/// hours, how tired the company is, and the duties now set.
+fn roster_lines(sim: &Sim, events: &mut Vec<String>) {
+    let ours: Vec<_> = sim.squads.iter().filter(|q| q.side == PLAYER_SIDE && q.roster.is_some()).collect();
+    if ours.is_empty() {
+        return;
+    }
+    // What they did, grouped by hours on guard and asleep (to the nearest hour).
+    let mut groups: Vec<((u32, u32), Vec<u32>)> = Vec::new();
+    let mut sent = Vec::new();
+    for q in &ours {
+        let Some(d) = q.yesterday else { continue };
+        let DayRecord { guard_minutes, sleep_minutes, sent_away } = d;
+        let key = ((guard_minutes + 30) / 60, (sleep_minutes + 30) / 60);
+        match groups.iter_mut().find(|g| g.0 == key) {
+            Some(g) => g.1.push(q.id),
+            None => groups.push((key, vec![q.id])),
+        }
+        if sent_away {
+            sent.push(q.id);
+        }
+    }
+    for ((g, sl), ids) in &groups {
+        let mut s = squad_list(ids);
+        if let Some(f) = s.get_mut(0..1) {
+            f.make_ascii_uppercase();
+        }
+        events.push(format!("{s}: {} on guard, {} asleep.", hours(g * 60), hours(sl * 60)));
+    }
+    if !sent.is_empty() {
+        events.push(format!("Sent away from their duty by you: {}.", squad_list(&sent)));
+    }
+
+    // How tired they are now (each squad by its men's average).
+    let mut by_word: [(&str, Vec<u32>); 3] = [("fresh", vec![]), ("tired", vec![]), ("exhausted", vec![])];
+    for q in &ours {
+        let t = q.members.iter().map(|&m| sim.soldiers[m as usize].tiredness).sum::<f32>() / q.members.len().max(1) as f32;
+        let w = roster::tiredness_word(t);
+        by_word.iter_mut().find(|b| b.0 == w).unwrap().1.push(q.id);
+    }
+    let count = |n: usize| match n {
+        0 => "none".to_string(),
+        1 => "1 squad".to_string(),
+        n => format!("{n} squads"),
+    };
+    let mut line = format!(
+        "The men now: {} fresh, {} tired, {} exhausted",
+        count(by_word[0].1.len()),
+        count(by_word[1].1.len()),
+        count(by_word[2].1.len())
+    );
+    if !by_word[2].1.is_empty() {
+        line.push_str(&format!(" ({}; an exhausted man sees half as far and walks slower)", squad_list(&by_word[2].1)));
+    }
+    events.push(format!("{line}."));
+
+    let n = |f: &dyn Fn(Duty, Duty) -> bool| ours.iter().filter(|q| q.roster.is_some_and(|r| f(r.day, r.night))).count();
+    events.push(format!(
+        "The roster, same as yesterday unless you change it: {} on guard by day, {} by night, {} resting all day and night.",
+        count(n(&|d, _| d == Duty::Guard)),
+        count(n(&|_, nt| nt == Duty::Guard)),
+        count(n(&|d, nt| d == Duty::Rest && nt == Duty::Rest)),
+    ));
 }

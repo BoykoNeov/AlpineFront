@@ -1,0 +1,90 @@
+# Lookout posts and shelters of the Austro-Hungarian summit position on Col di Lana, early 1916
+# (decisions 40 and 43). Used by the step-2 work roster: guards go to posts, resting men to shelters.
+#
+# WHAT IS HISTORICAL AND WHAT IS NOT. Period accounts describe the position: about 200 m of trench in
+# a half-circle around the two summit humps, facing the Italians, with forward posts of four or more
+# men; behind the crest the great cavern, where about 100 men crowded, the large hut, and the
+# Austrian counter-mine gallery, stopped at 25 m and made into a troop shelter. No source found gives
+# the exact spots, so every x and y below was read from the terrain by Claude: posts where the view
+# down the southern slopes is open, shelters where no point on the southern slopes can see them.
+# The sources are listed in docs/decisions.md under decisions 40 and 43.
+#
+# Places are in metres from the summit (x east, y north). `squads` is how many squads the place
+# holds; a squad standing guard at a post, or resting in a shelter, has a spot of its own there.
+# Safe to edit; replays keep a copy of the file they were recorded with.
+
+# ---- Lookout posts: on the half-circle of trench about 60 m out from the top -----------------------
+
+[[place]]
+name = "West post"
+kind = "post"
+x = -50.0
+y = 10.0
+squads = 1
+source = "trench line and forward posts: period accounts; spot read from the terrain"
+
+[[place]]
+name = "South-west post"
+kind = "post"
+x = -32.0
+y = -32.0
+squads = 1
+source = "trench line and forward posts: period accounts; spot read from the terrain"
+
+[[place]]
+name = "South post"
+kind = "post"
+x = 5.0
+y = -50.0
+squads = 1
+source = "trench line and forward posts: period accounts; spot read from the terrain"
+
+[[place]]
+name = "South-east post"
+kind = "post"
+x = 44.0
+y = -39.0
+squads = 1
+source = "trench line and forward posts: period accounts; spot read from the terrain"
+
+[[place]]
+name = "East post"
+kind = "post"
+x = 68.0
+y = -6.0
+squads = 1
+source = "trench line and forward posts: period accounts; spot read from the terrain"
+
+[[place]]
+name = "North-east post"
+kind = "post"
+x = 62.0
+y = 40.0
+squads = 1
+source = "trench line around the second hump: period accounts; spot read from the terrain"
+
+# ---- Shelters: behind the crest, out of sight of the southern slopes -------------------------------
+
+[[place]]
+name = "Great cavern"
+kind = "shelter"
+x = 0.0
+y = 40.0
+squads = 10
+source = "about 100 men sheltered here: period accounts; spot read from the terrain (beside the 1916 crater, which blew in part of it)"
+
+[[place]]
+name = "Large hut"
+kind = "shelter"
+x = -25.0
+y = 35.0
+squads = 3
+source = "the large hut: period accounts; size and spot by Claude"
+
+[[place]]
+name = "Counter-mine gallery"
+kind = "shelter"
+x = 20.0
+y = 30.0
+squads = 2
+source = "the counter-mine gallery made into a troop shelter: period accounts; size and spot by Claude"

@@ -169,7 +169,7 @@ fn test_replays(w: &World, watch: &mut Watch) -> Outcome {
     }
     // Record a replay with player orders, save it, load it, play it back.
     let mut sim = scenario::step1(w.terrain.clone(), w.tuning.clone(), 99, w.pool8.clone(), false);
-    let mut rec = Recorder::new(scenario::STEP1, 99, w.terrain.fingerprint(), &w.tuning_toml, "");
+    let mut rec = Recorder::new(scenario::STEP1, 99, w.terrain.fingerprint(), &w.tuning_toml, "", "");
     let orders = [(50u64, 0u32, (300.0, -200.0)), (900, 3, (-400.0, 460.0)), (2000, 0, (0.0, 0.0)), (2500, 7, (500.0, 500.0))];
     while sim.tick < ticks {
         for &(t, squad, (x, y)) in &orders {

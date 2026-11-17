@@ -26,11 +26,13 @@ pub struct OverlaySettings {
     pub viewshed: bool,
     pub spotting: SpotLines,
     pub routes: bool,
+    /// The work roster's lookout posts and shelters, with their names.
+    pub places: bool,
 }
 
 impl Default for OverlaySettings {
     fn default() -> Self {
-        OverlaySettings { contours: true, steep: false, viewshed: false, spotting: SpotLines::Everyone, routes: true }
+        OverlaySettings { contours: true, steep: false, viewshed: false, spotting: SpotLines::Everyone, routes: true, places: true }
     }
 }
 

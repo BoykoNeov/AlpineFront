@@ -62,3 +62,19 @@ light" its start in the morning (the sun 6° below the horizon), the standard de
 Run them with `cargo test --release -p alpine_sim --test step2` (about 3 minutes). Tests 14 to 16
 set the cloud themselves; the other step-2 tests use the week's weather diary
 (`data/weather/march_1916.toml`).
+
+## Step 2: the work roster (approved 2026-11-17)
+
+Places are the lookout posts and shelters in `data/places/col_di_lana_1916.toml` (decisions 39 to
+43). "Fresh", "tired" and "exhausted" are the morning report's words for a man's tiredness.
+
+| # | Expectation |
+| --- | --- |
+| 22 | **Shelter hides both ways.** A squad resting in a shelter sees no enemy and is never seen by one, day or night. |
+| 23 | **Guards watch.** By day a squad at a south-facing post spots an Italian squad in plain view on the southern slope at the full 1,500 m. |
+| 24 | **Shifts change themselves.** Within 1 game minute of dusk, and of the morning "Carry on", every squad on the roster sets off for its new place, and each gets there within 15 game minutes. |
+| 25 | **Tiredness builds and recovers.** A man who guards from dawn to dusk ends the day tired but not exhausted. One who guards around the clock is exhausted by the next dawn. One who guards by day and sleeps the night is fresh again at dawn. |
+| 26 | **Tired men see and walk less.** An exhausted guard spots at half the distance a fresh one does, by day and by night. An exhausted squad takes about 1.4 times as long on the long climb. |
+| 27 | **Orders beat the roster.** A squad sent elsewhere leaves its duty, stays where it was sent, and takes up its duty again at the next dusk or dawn, or when "Back to duty" is pressed. |
+| 28 | **Same as yesterday.** Pressing "Carry on" without touching the roster gives the same duties as the day before. |
+| 29 | **Replays and old tests.** Roster choices are saved in replays and play back exactly. Tests 1 to 21 still pass. |

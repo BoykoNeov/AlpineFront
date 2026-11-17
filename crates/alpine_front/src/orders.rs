@@ -43,7 +43,7 @@ fn pick_terrain(link: &SimLink, (camera, cam_tf): Cam, cursor: Vec2) -> Option<u
     let sim = &link.sim;
     let cam_pos = cam_tf.translation();
     let mut best: Option<(u32, f32)> = None;
-    for s in &sim.soldiers {
+    for s in sim.soldiers.iter().filter(|s| !sim.squads[s.squad as usize].inside) {
         let (x, y) = link.drawn_position(s.id as usize);
         let ground = to_world(x, y, sim.terrain.height(x, y));
         let centre = ground + Vec3::Y * 0.8 * marker_scale(cam_pos.distance(ground));
@@ -63,7 +63,7 @@ fn pick_map(link: &SimLink, map: &MapView, (camera, cam_tf): Cam, cursor: Vec2) 
     let sim = &link.sim;
     let mut best: Option<(u32, f32)> = None;
     if map.shows_men() {
-        for s in &sim.soldiers {
+        for s in sim.soldiers.iter().filter(|s| !sim.squads[s.squad as usize].inside) {
             let (x, y) = link.drawn_position(s.id as usize);
             if let Ok(p) = camera.world_to_viewport(cam_tf, Vec3::new(x, y, 0.0)) {
                 let d = p.distance(cursor);
@@ -73,7 +73,7 @@ fn pick_map(link: &SimLink, map: &MapView, (camera, cam_tf): Cam, cursor: Vec2) 
             }
         }
     } else {
-        for q in &sim.squads {
+        for q in sim.squads.iter().filter(|q| !q.inside) {
             let Some((x, y)) = squad_anchor(link, q.id) else { continue };
             if let Ok(p) = camera.world_to_viewport(cam_tf, Vec3::new(x, y, 0.0)) {
                 let d = (p + FLAG_PICK_OFFSET_PX).distance(cursor);

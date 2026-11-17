@@ -298,3 +298,38 @@ revisited):
 | # | Topic | Chosen | Rejected | Why |
 | --- | --- | --- | --- | --- |
 | 38 | What a new contact or an arrival does to normal play | A setting the player chooses in the side panel: only show a message (the default), slow to 8×, or slow to 1×. The skip-ahead always stops, and first light always opens the orders screen | Always dropping to 1× (as first built); always slowing to 8× (Claude's recommendation); slowing only for enemies within some distance | Measured: by day the current patrols give about 20 new sightings per half-day, so dropping to 1× would interrupt play at 64× about every 30 real seconds. Director's choice: let the player decide, and by default do not slow down. Replaces the brief's "auto-slows on events" for normal play; a setting of the screen, not the simulation, so replays are unaffected |
+
+## 2026-11-17 — Step 2: the work roster
+
+| # | Topic | Chosen | Rejected | Why |
+| --- | --- | --- | --- | --- |
+| 39 | Which duties the first roster has | Guard and rest, with simple tiredness added now: guards watch from lookout posts and grow tired; resting men sleep in shelters, out of sight both ways, and recover; tired men spot at shorter distances and walk slower. Carrying arrives with the carrying-parties piece; digging waits for building (step 6) | Guard and off duty without tiredness; guard, rest and carrying built as one piece; a "dig" duty that does nothing yet | Nothing goes in unless it changes what happens and the player can see it. Without tiredness, keeping everyone on guard is always best, so there is no choice to make. Building carrying at the same time needs supply stocks and a depot, and delays the first thing the director can judge |
+| 40 | Where the lookout posts and shelters are | From period sources: where the Austro-Hungarian posts, shelters and caverns on Col di Lana stood in early 1916, researched first; invented but believable places only where the sources are silent, marked as such in the data file | Invented but believable from the start (Claude's recommendation); the player placing them on the first morning | Director's choice: ground the position in history from the start. Kept in a readable data file and shown with names in both views |
+| 41 | How often duties are set | Each squad gets a day duty and a night duty at the dawn orders screen, "same as yesterday" filled in; they switch by themselves at dusk and dawn. The roster can also be changed at any time from the side panel | A separate dusk orders screen; one duty per squad for 24 hours; watches of a few hours | Night guard is planned on its own without a second stop each day, which would interrupt the skip-ahead and fast play. One 24-hour duty leaves guards watching day and night; short watches mean too many clicks each morning, better left to a later standing instruction |
+| 42 | Sending a squad that is on duty somewhere else | It leaves its duty and stays where it was sent, counting as awake (so it tires). At the next dusk or dawn it takes up its rostered duty again by itself; a "Back to duty" button sends it back sooner | Going back by itself a set time after arriving; staying until returned by hand | The player's order always wins, and no post is left unmanned for long by accident |
+| 43 | The roster's details (director approved the plan as a whole) | Tiredness builds while a man is awake and falls while he sleeps in a shelter on rest duty: about 18 hours awake to exhausted, 8 hours' sleep from exhausted to fresh; an exhausted man spots at half the distance and walks at 70% of his speed, a tired one in between. Six lookout posts on the half-circle of trench about 60 m out from the top, one squad each; three shelters behind the crest: the great cavern (10 squads), the large hut (3), the old counter-mine gallery (2). The first morning's roster splits the company in three: 5 squads guard by day, 5 by night, 5 rest in reserve. The Italians do not tire until the enemy officer arrives. Squads walking to their roster places raise no "arrived" messages. Step-2 replays saved before the roster are refused; step-1 replays still play | Per-watch rotation inside a squad (the sources say sentries changed every two hours; left to a later standing instruction); a reserve shelter at "Alpenrose" (the reserve companies there are outside the player's company) | The plan as presented to the director. The numbers make a squad that guards by day tired but not exhausted by dusk, exhausted if it also guards the night, and fresh again after a night's sleep |
+
+### Sources for the summit position (decisions 40 and 43)
+
+The sources describe the position but give no exact spots; every place's spot was read from the
+terrain by Claude (open view to the south for posts, out of sight of the southern slopes for
+shelters), and the data file says so.
+
+- [frontedolomitico.it: winter preparations, December 1915 to January 1916](https://www.frontedolomitico.it/Luoghi/coldilana/19_inverno.html)
+  — several lines of trench in a half-circle around the two summit humps, about 200 m long; forward
+  listening posts of four or more men; a double belt of wire; reserve companies at "Alpenrose"
+  relieving the front every 24 hours
+- [frontedolomitico.it: the Austrian wait, April 1916](https://www.frontedolomitico.it/Luoghi/coldilana/24_attesa.html)
+  — the great cavern where about 100 men crowded; the large hut, the officers' hut, the kitchen and
+  listening caverns; sentries changed every two hours; the garrison of 17 April, 9 officers and 238
+  men, the Kaiserjäger company 6 officers and 140 men; two platoons in the forward positions
+- [frontedolomitico.it: tunnel works, January to March 1916](https://www.frontedolomitico.it/Luoghi/coldilana/22_lavori.html)
+  — the Austrian counter-gallery, stopped at 25 m and made into a troop shelter
+- [frontedolomitico.it: the explosion](https://www.frontedolomitico.it/Luoghi/coldilana/26_esplosione.html)
+  — part of the cavern blown up; consistent with placing it just north of the top, by the crater
+- [Austria-Forum: Col di Lana](https://austria-forum.org/af/AustriaWiki/Col_di_Lana) — literature
+  (Tschurtschenthaler, Schemfil), not consulted directly
+
+**Found on the way, for the night raid:** in early 1916 the Italian front trench lay only tens of
+metres below the summit (their mine gallery was about 50 m long, its head halfway between the two
+wire belts), while the game's Italian patrols stay more than 1 km away.

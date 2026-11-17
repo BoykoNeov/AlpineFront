@@ -3,7 +3,9 @@
 //! Every update (tick) runs these stages in this order:
 //! 0. with a calendar (step 2 on): the clock moves on, the light and spotting distance are worked
 //!    out for the new moment, and dawn and dusk are noted;
-//! 1. orders scheduled for this tick are given to their squads;
+//! 1. with a work roster: at dawn and dusk every rostered squad takes up its duty for the half of
+//!    the day now beginning; then orders scheduled for this tick are given to their squads, and once
+//!    a game minute the player's men tire or recover;
 //! 2. patrolling squads that have waited long enough pick a new destination;
 //! 3. squads whose route is ready start moving;
 //! 4. every soldier moves (split across threads; each man reads only the previous state);
@@ -23,6 +25,7 @@ use crate::flow::FlowField;
 use crate::hash::Checksum;
 use crate::los::{self, LosParams};
 use crate::rng::Rng;
+use crate::roster::{Duty, Place, PlaceKind, Roster};
 use crate::sky::{self, Calendar, SkyState};
 use crate::spatial::SpatialGrid;
 use crate::terrain::Terrain;
@@ -98,12 +101,20 @@ pub struct Clock {
     pub sky: SkyState,
     /// Mornings that have begun since the game opened (0 on the first morning).
     pub day: u32,
+    /// Between dusk and dawn: the work roster's night duties apply.
+    pub night: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum Order {
-    /// Send a squad to a place (metres from the summit).
+    /// Send a squad to a place (metres from the summit). A squad on the roster leaves its duty
+    /// until the next dusk or dawn (decision 42).
     Move { squad: u32, x: f32, y: f32 },
+    /// Set a squad's duties on the work roster. Takes effect at once for the half of the day now
+    /// running, unless the squad has been sent elsewhere.
+    SetRoster { squad: u32, day: Duty, night: Duty },
+    /// Send a squad that was sent elsewhere back to its rostered duty now.
+    BackToDuty { squad: u32 },
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -131,6 +142,8 @@ pub struct Soldier {
     pub still_ticks: u32,
     /// Enemies he can currently see, by soldier id, ascending.
     pub sees: Vec<u32>,
+    /// How tired he is: 0 fresh, 1 exhausted (games with a work roster; decision 43).
+    pub tiredness: f32,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -167,6 +180,30 @@ pub struct Squad {
     pub next_patrol_tick: u64,
     /// When one of the player's men last saw a man of this squad (enemy squads only).
     pub last_seen_by_player: Option<u64>,
+    /// Its duties on the work roster (the player's squads, in games with one).
+    pub roster: Option<Roster>,
+    /// Sent elsewhere by the player: off duty until the next dusk or dawn, or "Back to duty".
+    pub detached: bool,
+    /// While on duty: the place (an index into `Sim::places`) and the spot there it is going to or
+    /// standing at.
+    pub post: Option<(usize, usize)>,
+    /// Inside its shelter: it sees nothing, cannot be seen, and its men sleep.
+    pub inside: bool,
+    /// The current move was made by the roster, so its arrival is not worth a message.
+    pub roster_move: bool,
+    /// What it has done since the latest dawn, and what it did in the 24 hours before that.
+    pub today: DayRecord,
+    pub yesterday: Option<DayRecord>,
+}
+
+/// What a squad on the roster did in a day, for the morning report.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct DayRecord {
+    /// Game minutes standing at a lookout post, and asleep inside a shelter.
+    pub guard_minutes: u32,
+    pub sleep_minutes: u32,
+    /// Sent elsewhere by the player at some point.
+    pub sent_away: bool,
 }
 
 /// A route calculation running on a worker thread.
@@ -213,6 +250,8 @@ pub struct Sim {
     pub events: Vec<Event>,
     /// Every event since the start, in order.
     pub journal: Vec<LoggedEvent>,
+    /// The lookout posts and shelters of the work roster (empty without one).
+    pub places: Vec<Place>,
     rng: Rng,
     pool: Arc<rayon::ThreadPool>,
     scheduled: VecDeque<LoggedOrder>,
@@ -251,6 +290,7 @@ impl Sim {
             spotting_range: tuning.spotting.spotting_range_m,
             events: Vec::new(),
             journal: Vec::new(),
+            places: Vec::new(),
             los: LosParams::from_tuning(&tuning.line_of_sight),
             terrain,
             tuning,
@@ -272,7 +312,8 @@ impl Sim {
     pub fn set_clock(&mut self, calendar: Calendar, weather: Weather) {
         let t = calendar.start;
         let sky = calendar.sky(t, weather.cloud_at(t), &self.tuning.light);
-        self.clock = Some(Clock { calendar, weather, sky, day: 0 });
+        let night = sky.sun_altitude_deg < sky::DAWN_ALTITUDE_DEG;
+        self.clock = Some(Clock { calendar, weather, sky, day: 0, night });
         self.spotting_range = sky::spotting_distance(sky.lux, &self.tuning.light, self.tuning.spotting.spotting_range_m);
     }
 
@@ -283,10 +324,11 @@ impl Sim {
     }
 
     /// Whether events about this squad are worth telling the player: one of his own, under his
-    /// orders rather than wandering on a patrol, in a game with a calendar.
+    /// orders rather than wandering on a patrol or walking to its roster place, in a game with a
+    /// calendar.
     fn player_ordered(&self, squad: u32) -> bool {
         let q = &self.squads[squad as usize];
-        self.clock.is_some() && q.side == PLAYER_SIDE && q.patrol.is_none()
+        self.clock.is_some() && q.side == PLAYER_SIDE && q.patrol.is_none() && !q.roster_move
     }
 
     pub fn rng(&mut self) -> &mut Rng {
@@ -319,6 +361,7 @@ impl Sim {
                 waypoint: None,
                 still_ticks: 0,
                 sees: Vec::new(),
+                tiredness: 0.0,
             });
         }
         self.squads.push(Squad {
@@ -334,6 +377,13 @@ impl Sim {
             patrol: None,
             next_patrol_tick: u64::MAX,
             last_seen_by_player: None,
+            roster: None,
+            detached: false,
+            post: None,
+            inside: false,
+            roster_move: false,
+            today: DayRecord::default(),
+            yesterday: None,
         });
         self.grid.rebuild(self.soldiers.iter().map(|s| (s.x, s.y)));
         sid
@@ -432,6 +482,7 @@ impl Sim {
         sq.order_tick = tick;
         sq.arrived_tick = None;
         sq.field = None;
+        sq.inside = false;
         let Some(dp) = dp else {
             sq.state = SquadState::Unreachable;
             sq.dest = None;
@@ -504,6 +555,124 @@ impl Sim {
         self.tuning.seconds_to_ticks(minutes * 60.0)
     }
 
+    // ---- the work roster -----------------------------------------------------------------------
+
+    /// The duties the player has set for squad `i` but that have not taken effect yet (orders given
+    /// while time stands still take effect at the next update), else its current duties.
+    pub fn roster_shown(&self, i: usize) -> Option<Roster> {
+        let pending = self.scheduled.iter().rev().find_map(|o| match o.order {
+            Order::SetRoster { squad, day, night } if squad as usize == i => Some(Roster { day, night }),
+            _ => None,
+        });
+        pending.or(self.squads.get(i)?.roster)
+    }
+
+    /// Whether a "Back to duty" for squad `i` is waiting for the next update.
+    pub fn back_to_duty_pending(&self, i: usize) -> bool {
+        self.scheduled.iter().any(|o| matches!(o.order, Order::BackToDuty { squad } if squad as usize == i))
+    }
+
+    /// The duty squad `i` should be doing now, if it is on the roster and not sent elsewhere.
+    pub fn duty_now(&self, i: usize) -> Option<Duty> {
+        let q = &self.squads[i];
+        let night = self.clock.as_ref().is_some_and(|c| c.night);
+        if q.detached { None } else { q.roster.map(|r| r.duty(night)) }
+    }
+
+    /// Picks a place and spot for squad `i`'s current duty: the first free spot at a place of the
+    /// right kind, in the places file's order; if all are taken, it shares the place of that kind
+    /// with the fewest squads.
+    fn choose_spot(&self, i: usize, kind: PlaceKind) -> Option<(usize, usize)> {
+        let mut used: Vec<Vec<u32>> = self.places.iter().map(|p| vec![0; p.spots.len()]).collect();
+        for (j, q) in self.squads.iter().enumerate() {
+            if let Some((p, k)) = q.post
+                && j != i
+            {
+                used[p][k] += 1;
+            }
+        }
+        let of_kind = || self.places.iter().enumerate().filter(move |(_, p)| p.kind == kind).map(|(n, _)| n);
+        for p in of_kind() {
+            if let Some(k) = used[p].iter().position(|&u| u == 0) {
+                return Some((p, k));
+            }
+        }
+        let p = of_kind().min_by_key(|&p| (used[p].iter().sum::<u32>(), p))?;
+        let k = used[p].iter().enumerate().min_by_key(|&(k, &u)| (u, k)).map(|(k, _)| k)?;
+        Some((p, k))
+    }
+
+    /// Squad `i` takes up its current duty: stays if it already has a place of the right kind,
+    /// otherwise is given one and walks there.
+    fn take_up_duty(&mut self, i: usize) {
+        let Some(duty) = self.duty_now(i) else { return };
+        let kind = duty.place_kind();
+        if let Some((p, _)) = self.squads[i].post
+            && self.places[p].kind == kind
+        {
+            return;
+        }
+        self.squads[i].post = None;
+        let Some((p, k)) = self.choose_spot(i, kind) else { return };
+        let (x, y) = self.places[p].spots[k];
+        let q = &mut self.squads[i];
+        q.post = Some((p, k));
+        q.roster_move = true;
+        self.start_move(i as u32, x, y);
+    }
+
+    /// Dawn or dusk: every rostered squad, including those sent elsewhere, takes up its duty for
+    /// the half of the day now beginning. Squads give up places of the wrong kind first, so a squad
+    /// coming off guard can take the shelter spot of one going on.
+    fn change_shift(&mut self) {
+        if self.places.is_empty() {
+            return;
+        }
+        for i in 0..self.squads.len() {
+            let q = &mut self.squads[i];
+            if q.roster.is_some() {
+                q.detached = false;
+            }
+            let wanted = self.duty_now(i).map(Duty::place_kind);
+            let q = &mut self.squads[i];
+            if let Some((p, _)) = q.post
+                && wanted != Some(self.places[p].kind)
+            {
+                q.post = None;
+            }
+        }
+        for i in 0..self.squads.len() {
+            self.take_up_duty(i);
+        }
+    }
+
+    /// Puts the work roster in place at the start of a game: each listed squad gets its duties and
+    /// stands at its place for the duty now running (inside, if that is a shelter).
+    pub fn start_roster(&mut self, places: Vec<Place>, rosters: &[(u32, Roster)]) {
+        self.places = places;
+        for &(squad, roster) in rosters {
+            let i = squad as usize;
+            self.squads[i].roster = Some(roster);
+            let Some(duty) = self.duty_now(i) else { continue };
+            let kind = duty.place_kind();
+            let Some((p, k)) = self.choose_spot(i, kind) else { continue };
+            let (x, y) = self.places[p].spots[k];
+            let members = self.squads[i].members.clone();
+            let slots = self.formation_around(x, y, members.len());
+            for (m, &slot) in members.iter().zip(&slots) {
+                let s = &mut self.soldiers[*m as usize];
+                (s.x, s.y) = slot;
+                s.slot = slot;
+                s.arrived = true;
+                s.waypoint = None;
+            }
+            let q = &mut self.squads[i];
+            q.post = Some((p, k));
+            q.inside = kind == PlaceKind::Shelter;
+        }
+        self.grid.rebuild(self.soldiers.iter().map(|s| (s.x, s.y)));
+    }
+
     // ---- the update ----------------------------------------------------------------------------
 
     /// Advances the simulation by one tick.
@@ -521,10 +690,17 @@ impl Sim {
             c.sky = sky;
             if before < sky::DAWN_ALTITUDE_DEG && sky.sun_altitude_deg >= sky::DAWN_ALTITUDE_DEG {
                 c.day += 1;
+                c.night = false;
                 let day = c.day;
                 self.note(Event::Dawn { day });
+                for q in self.squads.iter_mut().filter(|q| q.roster.is_some()) {
+                    q.yesterday = Some(std::mem::take(&mut q.today));
+                }
+                self.change_shift();
             } else if before > sky::DUSK_ALTITUDE_DEG && sky.sun_altitude_deg <= sky::DUSK_ALTITUDE_DEG {
+                c.night = true;
                 self.note(Event::Dusk);
+                self.change_shift();
             }
         }
 
@@ -534,11 +710,55 @@ impl Sim {
             match o.order {
                 Order::Move { squad, x, y } => {
                     if (squad as usize) < self.squads.len() {
+                        let q = &mut self.squads[squad as usize];
+                        q.roster_move = false;
+                        if q.roster.is_some() {
+                            q.detached = true;
+                            q.post = None;
+                            q.today.sent_away = true;
+                        }
                         self.start_move(squad, x, y);
+                    }
+                }
+                Order::SetRoster { squad, day, night } => {
+                    if (squad as usize) < self.squads.len() && !self.places.is_empty() {
+                        self.squads[squad as usize].roster = Some(Roster { day, night });
+                        self.take_up_duty(squad as usize);
+                    }
+                }
+                Order::BackToDuty { squad } => {
+                    if let Some(q) = self.squads.get_mut(squad as usize)
+                        && q.roster.is_some()
+                        && q.detached
+                    {
+                        q.detached = false;
+                        self.take_up_duty(squad as usize);
                     }
                 }
             }
             self.order_log.push(o);
+        }
+
+        // Tiredness, once a game minute (games with a work roster only).
+        let minute = self.tuning.seconds_to_ticks(60.0);
+        if !self.places.is_empty() && tick.is_multiple_of(minute) {
+            let tt = &self.tuning.tiredness;
+            let (up, down) = (1.0 / (tt.hours_awake_to_exhausted * 60.0), 1.0 / (tt.hours_asleep_to_fresh * 60.0));
+            for &i in &self.by_side[PLAYER_SIDE.index()] {
+                let s = &mut self.soldiers[i as usize];
+                let asleep = self.squads[s.squad as usize].inside;
+                s.tiredness = if asleep { (s.tiredness - down).max(0.0) } else { (s.tiredness + up).min(1.0) };
+            }
+            for q in self.squads.iter_mut().filter(|q| q.roster.is_some()) {
+                if q.inside {
+                    q.today.sleep_minutes += 1;
+                } else if let Some((p, _)) = q.post
+                    && self.places[p].kind == PlaceKind::Post
+                    && q.state == SquadState::Arrived
+                {
+                    q.today.guard_minutes += 1;
+                }
+            }
         }
 
         // 2. Patrols.
@@ -603,6 +823,11 @@ impl Sim {
             if all {
                 self.squads[i].state = SquadState::Arrived;
                 self.squads[i].arrived_tick = Some(tick);
+                if let Some((p, _)) = self.squads[i].post
+                    && self.places[p].kind == PlaceKind::Shelter
+                {
+                    self.squads[i].inside = true;
+                }
                 if self.squads[i].patrol.is_some() {
                     let p = self.patrol_pause_ticks();
                     self.squads[i].next_patrol_tick = tick + p;
@@ -685,12 +910,21 @@ impl Sim {
         self.clock.as_ref().map(|c| c.calendar.now(tick as f64 * dt))
     }
 
-    /// Enemies soldier `i` can see right now, within spotting range.
+    /// How far soldier `i` can spot a man right now: the light's distance, less for a tired man.
+    pub fn spotting_range_of(&self, i: u32) -> f32 {
+        self.spotting_range * self.tuning.tiredness.spotting_factor(self.soldiers[i as usize].tiredness)
+    }
+
+    /// Enemies soldier `i` can see right now, within his spotting range. Men inside a shelter
+    /// neither see nor can be seen.
     pub fn spot_from(&self, i: u32) -> Vec<u32> {
         let o = &self.soldiers[i as usize];
+        if self.squads[o.squad as usize].inside {
+            return Vec::new();
+        }
         let t = &self.terrain;
         let eye = [o.x, o.y, t.height(o.x, o.y) + self.tuning.soldier.eye_height_m];
-        let range2 = self.spotting_range.powi(2);
+        let range2 = self.spotting_range_of(i).powi(2);
         let head = self.tuning.soldier.head_height_m;
         self.by_side[o.side.enemy().index()]
             .iter()
@@ -698,7 +932,9 @@ impl Sim {
             .filter(|&e| {
                 let s = &self.soldiers[e as usize];
                 let d2 = (s.x - o.x).powi(2) + (s.y - o.y).powi(2);
-                d2 <= range2 && los::visible(t, &self.los, eye, [s.x, s.y, t.height(s.x, s.y) + head])
+                d2 <= range2
+                    && !self.squads[s.squad as usize].inside
+                    && los::visible(t, &self.los, eye, [s.x, s.y, t.height(s.x, s.y) + head])
             })
             .collect()
     }
@@ -762,6 +998,27 @@ impl Sim {
             h.u64(self.journal.len() as u64);
             for q in &self.squads {
                 h.u64(q.last_seen_by_player.unwrap_or(u64::MAX));
+            }
+            // The work roster, where there is one.
+            if !self.places.is_empty() {
+                h.u32(c.night as u32);
+                for s in &self.soldiers {
+                    h.f32(s.tiredness);
+                }
+                for q in &self.squads {
+                    let duty = |d: Duty| d as u32;
+                    h.u32(q.roster.map(|r| 1 + duty(r.day) * 2 + duty(r.night) * 4).unwrap_or(0));
+                    h.u32(q.detached as u32 | (q.inside as u32) << 1 | (q.roster_move as u32) << 2);
+                    let (p, k) = q.post.unwrap_or((usize::MAX, usize::MAX));
+                    h.u64(p as u64);
+                    h.u64(k as u64);
+                    for d in [Some(q.today), q.yesterday] {
+                        let d = d.unwrap_or(DayRecord { guard_minutes: u32::MAX, ..DayRecord::default() });
+                        h.u32(d.guard_minutes);
+                        h.u32(d.sleep_minutes);
+                        h.u32(d.sent_away as u32);
+                    }
+                }
             }
         }
         h.finish()
@@ -845,6 +1102,10 @@ impl MoveCtx<'_> {
                 return;
             }
             let o = &self.soldiers[j as usize];
+            // Men inside a shelter are under rock or a roof, not in the way of anyone outside.
+            if self.squads[o.squad as usize].inside {
+                return;
+            }
             let (ex, ey) = (s.x - o.x, s.y - o.y);
             let d = (ex * ex + ey * ey).sqrt();
             if d < 1e-4 {
@@ -876,7 +1137,8 @@ impl MoveCtx<'_> {
         }
         let (ux, uy) = (mx / ml, my / ml);
         let grade = t.height(s.x + ux, s.y + uy) - t.height(s.x, s.y);
-        let mut step = tu.walking.speed_mps(grade) * dt * ml.min(1.0);
+        let tired = tu.tiredness.walking_factor(s.tiredness);
+        let mut step = tu.walking.speed_mps(grade) * tired * dt * ml.min(1.0);
         if to_slot && dist < step && px == 0.0 && py == 0.0 {
             step = dist;
         }
@@ -888,7 +1150,7 @@ impl MoveCtx<'_> {
         if !t.walkable_at(nx, ny) && dist > 1e-4 {
             let (rx, ry) = (dx / dist, dy / dist);
             let grade = t.height(s.x + rx, s.y + ry) - t.height(s.x, s.y);
-            let rstep = (tu.walking.speed_mps(grade) * dt).min(if to_slot { dist } else { f32::INFINITY });
+            let rstep = (tu.walking.speed_mps(grade) * tired * dt).min(if to_slot { dist } else { f32::INFINITY });
             if t.walkable_at(s.x + rx * rstep, s.y + ry * rstep) {
                 nx = s.x + rx * rstep;
                 ny = s.y + ry * rstep;

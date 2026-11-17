@@ -87,7 +87,7 @@ fn place_units(
     mats: Res<UnitMaterials>,
     mode: Res<ViewMode>,
     camera: Single<&Transform, (With<TerrainCam>, Without<SoldierMarker>)>,
-    mut q: Query<(&SoldierMarker, &mut Transform, &mut MeshMaterial3d<StandardMaterial>)>,
+    mut q: Query<(&SoldierMarker, &mut Transform, &mut Visibility, &mut MeshMaterial3d<StandardMaterial>)>,
 ) {
     if *mode != ViewMode::Terrain {
         return;
@@ -95,9 +95,15 @@ fn place_units(
     let sim = &link.sim;
     let seen = seen_by_enemy(&link);
     let cam = camera.translation;
-    for (m, mut tf, mut mat) in &mut q {
+    for (m, mut tf, mut vis, mut mat) in &mut q {
         let i = m.0 as usize;
         let s = &sim.soldiers[i];
+        // Men inside a shelter are out of sight (decision 39).
+        let inside = sim.squads[s.squad as usize].inside;
+        vis.set_if_neq(if inside { Visibility::Hidden } else { Visibility::Inherited });
+        if inside {
+            continue;
+        }
         let (x, y) = link.drawn_position(i);
         let ground = to_world(x, y, sim.terrain.height(x, y));
         let scale = marker_scale(cam.distance(ground));

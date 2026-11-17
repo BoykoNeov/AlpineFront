@@ -12,7 +12,9 @@ do.
 Build step 2 (a week on the summit, rough) under way. Done so far: the summit as it was before the
 April 1916 mine; the calendar (Monday 6 to Sunday 12 March 1916), with the sun, the moon and a weather
 diary setting how far men can see, from 1,500 m by day to 15 to 50 m on a dark night; the dawn orders
-screen with a morning report; and the skip-ahead.
+screen with a morning report; the skip-ahead; and the work roster: each squad guards a lookout post
+or sleeps in a shelter, by day and by night, and men tire while awake (posts and shelters from period
+accounts of the summit position, in `data/places/col_di_lana_1916.toml`).
 
 - [Design brief](docs/design-brief.md): what the game is, the agreed decisions, architecture and
   build order
@@ -27,7 +29,11 @@ Built in Rust with the Bevy engine.
     cargo run --release -p alpine_front
 
 The game opens at first light on Monday 6 March 1916 with the orders screen; press Enter (or click
-"Carry on") to start the day. It stops there again every morning at first light.
+"Carry on") to start the day. It stops there again every morning at first light. The orders screen
+holds the work roster: click "guard" or "rest" for each squad's day and night duty. Squads change over
+by themselves at dusk and dawn; the side panel's "Work roster" changes duties at any time. Resting men
+are inside their shelter and are not drawn; select their squad from the roster. A squad you send
+somewhere leaves its duty until the next dusk or dawn, or until you press "Back to duty".
 
 Options: `--seed N` picks a different starting layout, `--step1` plays the step-1 scenario (no
 calendar, always daylight), `--autoplay` sets every squad wandering on
@@ -54,7 +60,8 @@ on the left switches the overlays.
     cargo test --release -p alpine_sim
 
 The scenario tests end in a plain-language report: `--test scenarios` runs the step-1 tests (about
-30 s), `--test step2` the calendar, night and skip-ahead tests (about 3 minutes).
+30 s), `--test step2` the calendar, night and skip-ahead tests (about 3 minutes), `--test roster` the
+work-roster tests (about 90 s).
 
 ## Speed pass
 
@@ -85,8 +92,15 @@ limit (99% within 2.5 ms); 99% of drawn frames within 8.7 ms in both views. Run 
 simulation goes about 905x faster than real time; the skip-ahead crosses a night, dusk to first
 light (11.6 game hours), in about 16 s.
 
+Step 2, with the work roster (2026-11-17): passed. The busiest frame's simulation work was 2.7 ms
+against an 8.3 ms limit (99% within 2.4 ms); 99% of drawn frames within 8.8 ms in both views. Run
+flat out the simulation goes about 960x faster than real time; the skip-ahead crosses a night in
+about 15 s. (The check runs every squad on random orders, as before; the roster adds a once-a-minute
+tiredness update, too small to show.)
+
 `ALPINE_CLICK_CHECK=1 target\release\alpine_front.exe --view map` (or `--view terrain`) checks that a
-view can be played: it carries on at the dawn orders screen, clicks a squad, orders it, on the map also zooms with the wheel, moves the
+view can be played: it carries on at the dawn orders screen, moves in close to the summit (where the
+squads stand at their posts), clicks a squad, orders it, on the map also zooms with the wheel, moves the
 map with W and by right-dragging, then switches views with M, tries the skip-ahead with N, and reports PASS or FAIL.
 
 ## Lettering

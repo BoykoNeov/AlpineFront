@@ -22,3 +22,9 @@ harness = false
 [[test]]
 name = "step2"
 harness = false
+
+# The locked work-roster tests (docs/scenario-tests.md, 22 to 29).
+# Run with: cargo test --release -p alpine_sim --test roster
+[[test]]
+name = "roster"
+harness = false

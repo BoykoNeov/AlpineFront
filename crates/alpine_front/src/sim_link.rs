@@ -120,9 +120,13 @@ impl SimLink {
                     (false, true) => scenario::STEP2_AUTOPLAY,
                     (false, false) => scenario::STEP2,
                 };
-                let weather_toml = if scenario::uses_weather(name) { Weather::load_march_1916()?.1 } else { String::new() };
-                let rec = Recorder::new(name, o.seed, terrain.fingerprint(), &tuning_toml, &weather_toml);
-                let sim = scenario::build(name, terrain, tuning, o.seed, pool, &weather_toml)?;
+                let (weather_toml, places_toml) = if scenario::uses_weather(name) {
+                    (Weather::load_march_1916()?.1, alpine_sim::roster::load_col_di_lana_1916_text()?)
+                } else {
+                    (String::new(), String::new())
+                };
+                let rec = Recorder::new(name, o.seed, terrain.fingerprint(), &tuning_toml, &weather_toml, &places_toml);
+                let sim = scenario::build(name, terrain, tuning, o.seed, pool, &weather_toml, &places_toml)?;
                 (sim, name.to_string(), Some(rec), None)
             }
         };

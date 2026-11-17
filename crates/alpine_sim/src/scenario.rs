@@ -1,5 +1,6 @@
 //! Starting situations.
 
+use crate::roster::{self, Duty, Roster};
 use crate::sim::{Event, LoggedEvent, PatrolZone, Side, Sim};
 use crate::sky::{Calendar, DateTime};
 use crate::terrain::Terrain;
@@ -16,12 +17,14 @@ pub const STEP2: &str = "step2";
 /// Step 2 with every squad, Austrian too, wandering on seeded random orders.
 pub const STEP2_AUTOPLAY: &str = "step2-autoplay";
 
-/// Whether a scenario uses the weather diary (and so needs its text, e.g. in a replay).
+/// Whether a scenario uses the weather diary and the places file (and so needs their text, e.g.
+/// in a replay).
 pub fn uses_weather(name: &str) -> bool {
     name == STEP2 || name == STEP2_AUTOPLAY
 }
 
-/// Builds a named scenario. `weather_toml` is the weather diary's text (ignored by step 1).
+/// Builds a named scenario. `weather_toml` is the weather diary's text and `places_toml` the
+/// lookout posts and shelters (both ignored by step 1).
 pub fn build(
     name: &str,
     terrain: Arc<Terrain>,
@@ -29,13 +32,14 @@ pub fn build(
     seed: u64,
     pool: Arc<rayon::ThreadPool>,
     weather_toml: &str,
+    places_toml: &str,
 ) -> Result<Sim, String> {
     match name {
         STEP1 => Ok(step1(terrain, tuning, seed, pool, false)),
         STEP1_AUTOPLAY => Ok(step1(terrain, tuning, seed, pool, true)),
         STEP2 | STEP2_AUTOPLAY => {
             let weather = Weather::from_toml(weather_toml)?;
-            step2(terrain, tuning, seed, pool, name == STEP2_AUTOPLAY, weather)
+            step2(terrain, tuning, seed, pool, name == STEP2_AUTOPLAY, weather, places_toml)
         }
         _ => Err(format!("unknown scenario '{name}'")),
     }
@@ -53,7 +57,8 @@ pub fn step2_calendar(terrain: &Terrain, tuning: &Tuning) -> Result<Calendar, St
 }
 
 /// Build step 2: the step-1 troops on the calendar. The game opens at first light on the first day,
-/// which counts as that morning's dawn.
+/// which counts as that morning's dawn. Without `autoplay` the Austro-Hungarians are on the work
+/// roster (decisions 39 to 43), each at his place for the day; with it they wander as in step 1.
 pub fn step2(
     terrain: Arc<Terrain>,
     tuning: Tuning,
@@ -61,12 +66,30 @@ pub fn step2(
     pool: Arc<rayon::ThreadPool>,
     autoplay: bool,
     weather: Weather,
+    places_toml: &str,
 ) -> Result<Sim, String> {
     let cal = step2_calendar(&terrain, &tuning)?;
+    let places = roster::places_from_toml(places_toml, &terrain)?;
     let mut sim = step1(terrain, tuning, seed, pool, autoplay);
     sim.set_clock(cal, weather);
     sim.journal.push(LoggedEvent { tick: 0, event: Event::Dawn { day: 0 } });
+    if !autoplay {
+        let ours: Vec<u32> = sim.squads.iter().filter(|q| q.side == Side::Austria).map(|q| q.id).collect();
+        let rosters: Vec<(u32, Roster)> = ours.iter().enumerate().map(|(k, &q)| (q, first_roster(k, ours.len()))).collect();
+        sim.start_roster(places, &rosters);
+    }
     Ok(sim)
+}
+
+/// The first morning's roster (decision 43): the company in three, a third guarding by day, a
+/// third by night, a third resting in reserve.
+pub fn first_roster(k: usize, n: usize) -> Roster {
+    use Duty::{Guard, Rest};
+    match k * 3 / n.max(1) {
+        0 => Roster { day: Guard, night: Rest },
+        1 => Roster { day: Rest, night: Guard },
+        _ => Roster { day: Rest, night: Rest },
+    }
 }
 
 /// Picks a random point in a ring around the summit that is on the main walkable ground.

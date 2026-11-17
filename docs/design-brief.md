@@ -221,6 +221,19 @@ hardware.
      the moon and cloud set the spotting distance. The cloud comes from a weather diary for the
      week, an invented but plausible late-winter week in a readable data file, which the falling
      snow piece will extend.
+   - The work roster (decisions 39 to 43). At the dawn orders screen each squad gets a day duty
+     and a night duty, guard or rest, with "same as yesterday" filled in; squads change over by
+     themselves at dusk and dawn, and the roster can be changed at any time from the side panel.
+     Guards watch from lookout posts; resting men sleep in shelters, where they neither see nor can
+     be seen. The places follow period sources: about 200 m of trench in a half-circle around the
+     two summit humps with forward posts, and behind the crest the great cavern (about 100 men),
+     the large hut and the old counter-mine gallery. Exact spots are read from the terrain, since
+     no source gives them; they live in `data/places/col_di_lana_1916.toml`. Men tire while awake
+     and recover asleep: about 18 hours awake leaves a man exhausted, 8 hours' sleep makes him
+     fresh, and an exhausted man spots at half the distance and walks at 70% of his speed. A squad
+     sent elsewhere leaves its duty until the next dusk or dawn, or until "Back to duty". The
+     Italians do not tire yet; that comes with the enemy officer. Carrying is added with the
+     carrying parties; digging waits for building (step 6).
    - The week is Monday 6 to Sunday 12 March 1916 (decision 31): deep snow and hard cold, the
      Italians tunnelling toward the summit since mid-January. On the summit the sun rises at about
      06:40 and sets at about 18:10 (Central European Time, before summer time began that April), so
