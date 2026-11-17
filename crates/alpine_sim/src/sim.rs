@@ -579,11 +579,12 @@ impl Sim {
         if q.detached { None } else { q.roster.map(|r| r.duty(night)) }
     }
 
-    /// Picks a place and spot for squad `i`'s current duty: the first free spot at a place of the
-    /// right kind, in the places file's order; if all are taken, it shares the place of that kind
-    /// with the fewest squads.
+    /// Picks a place and spot for squad `i`'s current duty: the first free regular spot at a place
+    /// of the right kind, in the places file's order; when those are all taken, a free spare spot
+    /// at the place of that kind with the fewest squads; only when those are gone too does it share
+    /// a spot.
     fn choose_spot(&self, i: usize, kind: PlaceKind) -> Option<(usize, usize)> {
-        let mut used: Vec<Vec<u32>> = self.places.iter().map(|p| vec![0; p.spots.len()]).collect();
+        let mut used: Vec<Vec<u32>> = self.places.iter().map(|p| vec![0; p.spot_count()]).collect();
         for (j, q) in self.squads.iter().enumerate() {
             if let Some((p, k)) = q.post
                 && j != i
@@ -593,9 +594,16 @@ impl Sim {
         }
         let of_kind = || self.places.iter().enumerate().filter(move |(_, p)| p.kind == kind).map(|(n, _)| n);
         for p in of_kind() {
-            if let Some(k) = used[p].iter().position(|&u| u == 0) {
+            if let Some(k) = used[p][..self.places[p].spots.len()].iter().position(|&u| u == 0) {
                 return Some((p, k));
             }
+        }
+        let regular = |p: usize| self.places[p].spots.len();
+        let spare = of_kind()
+            .filter_map(|p| used[p][regular(p)..].iter().position(|&u| u == 0).map(|k| (p, regular(p) + k)))
+            .min_by_key(|&(p, _)| (used[p].iter().sum::<u32>(), p));
+        if spare.is_some() {
+            return spare;
         }
         let p = of_kind().min_by_key(|&p| (used[p].iter().sum::<u32>(), p))?;
         let k = used[p].iter().enumerate().min_by_key(|&(k, &u)| (u, k)).map(|(k, _)| k)?;
@@ -614,7 +622,7 @@ impl Sim {
         }
         self.squads[i].post = None;
         let Some((p, k)) = self.choose_spot(i, kind) else { return };
-        let (x, y) = self.places[p].spots[k];
+        let (x, y) = self.places[p].spot(k);
         let q = &mut self.squads[i];
         q.post = Some((p, k));
         q.roster_move = true;
@@ -656,7 +664,7 @@ impl Sim {
             let Some(duty) = self.duty_now(i) else { continue };
             let kind = duty.place_kind();
             let Some((p, k)) = self.choose_spot(i, kind) else { continue };
-            let (x, y) = self.places[p].spots[k];
+            let (x, y) = self.places[p].spot(k);
             let members = self.squads[i].members.clone();
             let slots = self.formation_around(x, y, members.len());
             for (m, &slot) in members.iter().zip(&slots) {
