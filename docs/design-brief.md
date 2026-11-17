@@ -47,7 +47,8 @@ That makes verification tooling part of the first milestone, not a later extra:
 | Simulation base | Plain Rust with its own data and a fixed run order, splitting work across cores explicitly; Bevy only draws a snapshot each frame | Exact replays by design, and Bevy upgrades cannot change how the simulation behaves |
 | Terrain | 3D, built from real elevation data | Conveys the landscape of mountain warfare |
 | Units | Simple shapes when zoomed out, low-detail figures built in code with a few poses up close; instanced | Cheap to draw in thousands; no artist needed |
-| Screens | egui for now; the final period look is decided before the campaign step | Fast to build now, and no styling wasted on screens that may change |
+| Views | Two views of equal standing, switched with a key: the 3D terrain and a 2D map drawn as a First World War staff map (paper, hand-drawn style relief, lettered names, squad symbols when zoomed out and men up close). Everything the player can do works in both | The map reads where 3D hides men behind ridges, suits how the war was commanded, and is the natural place for "the map shows reports, not reality" and for the sector seat |
+| Screens | egui for now; the final period look of the screens is decided before the campaign step, and the map's look is revisited then | Fast to build now, and no styling wasted on screens that may change |
 | Target hardware | Strong gaming PC as the minimum: 8 cores, 32 GB memory, RTX 3070 class graphics | Headroom for soldier count and terrain; a speed pass after every build step keeps it honest |
 | Player seat, first | Company commander on one position, 150 to 250 men | Exercises every mechanic on a small map |
 | Player seat, later | Sector commander with several battalions | Same simulation, player moved up the chain |
@@ -99,6 +100,12 @@ asks the renderer for anything.
 - Chunked terrain mesh with level of detail, a free camera, and instanced unit shapes.
 - A contour overlay and a "what can this observer see" shading mode, because ridges hide units from
   the camera.
+- A 2D map view, drawn separately as a period staff map rather than as the 3D world seen from above,
+  so it can later show things differently (symbols, names, reports instead of truth). Rule: any
+  feature the player uses on the ground (selecting, orders, overlays, and later targeting, building
+  and digging) is not done until it works in both views. Clicking, orders and the side panels are
+  one piece of code shared by both views; only the drawing is separate. Own troops are blue and the
+  enemy red in both views.
 
 ## Command and communications
 
@@ -189,6 +196,9 @@ hardware.
    - Line of sight decides who has spotted whom, and the map shows it. There is no shooting.
    - Overlays: contour lines, "what this observer can see" shading, spotting lines, squad routes,
      and ground too steep to walk.
+   - Added after step 1 was finished, before step 2 starts: the 2D period map (see Presentation),
+     with every control and overlay of the 3D view. From here on the speed pass measures frames in
+     both views, and both must pass.
 2. **A week on the summit, rough.** First, the summit is rebuilt as it was before the April 1916
    mine (from old photos and maps), and the summit sight tests are re-measured and re-approved. Then
    the dawn orders screen, work roster, carrying parties, simple
@@ -222,6 +232,9 @@ weather.
   with the first milestone.
 - **Two interfaces.** Company and sector seats need different screens, which roughly doubles
   interface work.
+- **Two views.** Everything drawn on the ground (men, lines, shading, and later craters, wire and
+  tunnels) is drawn twice, once in 3D and once on the map. Sharing clicks, orders and panels keeps
+  this to the drawing alone; watch that it stays so.
 - **Scale.** Thousands of soldiers on a large map is unproven until the sector step; measure
   performance from the first milestone.
 

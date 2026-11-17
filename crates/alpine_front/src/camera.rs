@@ -1,19 +1,17 @@
-//! Free camera and mouse orders.
+//! The 3D view's free camera.
 //!
 //! WASD move, Q/E down/up, Shift faster, mouse wheel changes speed, hold the right button and drag to
-//! look around. Left-click a soldier to select his squad. Right-click the ground (without dragging)
-//! to send the selected Austro-Hungarian squad there.
+//! look around. Clicks and orders are in `orders.rs`, shared with the map.
 
 use crate::Options;
+use crate::orders::Clicks;
 use crate::sim_link::SimLink;
-use crate::terrain_view::{ground_hit, to_sim, to_world};
-use crate::units::{Selection, marker_scale};
-use alpine_sim::sim::{Order, Side};
+use crate::terrain_view::{to_sim, to_world};
+use crate::view::{TerrainCam, ViewMode};
 use bevy::input::mouse::{AccumulatedMouseMotion, AccumulatedMouseScroll, MouseScrollUnit};
 use bevy::light::CascadeShadowConfigBuilder;
 use bevy::pbr::{DistanceFog, FogFalloff};
 use bevy::prelude::*;
-use bevy::window::PrimaryWindow;
 use bevy_egui::input::EguiWantsInput;
 
 #[derive(Component)]
@@ -23,22 +21,14 @@ pub struct FlyCam {
     pub speed: f32,
 }
 
-#[derive(Resource, Default)]
-struct Clicks {
-    left_start: Option<Vec2>,
-    right_start: Option<Vec2>,
-    right_dragged: f32,
-}
-
 pub struct CameraPlugin;
 
 impl Plugin for CameraPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<Clicks>()
-            .insert_resource(ClearColor(Color::srgb(0.55, 0.68, 0.85)))
+        app.insert_resource(ClearColor(Color::srgb(0.55, 0.68, 0.85)))
             .insert_resource(GlobalAmbientLight { brightness: 350.0, ..default() })
             .add_systems(Startup, spawn_camera)
-            .add_systems(Update, (fly_camera, clicks));
+            .add_systems(Update, fly_camera);
     }
 }
 
@@ -52,6 +42,7 @@ fn spawn_camera(mut commands: Commands, link: Res<SimLink>, options: Res<Options
     let dir = (target - pos).normalize();
     commands.spawn((
         Camera3d::default(),
+        TerrainCam,
         Projection::Perspective(PerspectiveProjection { far: 30_000.0, near: 0.3, ..default() }),
         Transform::from_translation(pos).looking_to(dir, Vec3::Y),
         FlyCam { yaw: (-dir.x).atan2(-dir.z), pitch: dir.y.asin(), speed: 120.0 },
@@ -80,9 +71,10 @@ fn fly_camera(
     egui: Res<EguiWantsInput>,
     clicks: Res<Clicks>,
     link: Res<SimLink>,
+    mode: Res<ViewMode>,
     cam: Single<(&mut Transform, &mut FlyCam)>,
 ) {
-    if options.frame_check.is_some() || options.screenshot.is_some() {
+    if options.frame_check.is_some() || options.screenshot.is_some() || *mode != ViewMode::Terrain {
         return;
     }
     let (mut tf, mut cam) = cam.into_inner();
@@ -121,84 +113,4 @@ fn fly_camera(
     let floor = t.height(x.clamp(t.min_x(), t.max_x()), y.clamp(t.min_y(), t.max_y())) + 3.0;
     tf.translation.y = tf.translation.y.max(floor);
     tf.rotation = Quat::from_euler(EulerRot::YXZ, cam.yaw, cam.pitch, 0.0);
-}
-
-#[allow(clippy::too_many_arguments)]
-fn clicks(
-    buttons: Res<ButtonInput<MouseButton>>,
-    motion: Res<AccumulatedMouseMotion>,
-    window: Single<&Window, With<PrimaryWindow>>,
-    camera: Single<(&Camera, &GlobalTransform)>,
-    egui: Res<EguiWantsInput>,
-    mut state: ResMut<Clicks>,
-    mut link: ResMut<SimLink>,
-    mut selection: ResMut<Selection>,
-) {
-    let cursor = window.cursor_position();
-    let (camera, cam_tf) = *camera;
-    let over_ui = egui.wants_any_pointer_input();
-
-    if buttons.just_pressed(MouseButton::Left) && !over_ui {
-        state.left_start = cursor;
-    }
-    if buttons.just_released(MouseButton::Left)
-        && let (Some(start), Some(c)) = (state.left_start.take(), cursor)
-        && start.distance(c) < 5.0
-    {
-        // Select the soldier drawn nearest the cursor.
-        let sim = &link.sim;
-        let cam_pos = cam_tf.translation();
-        let mut best: Option<(u32, f32)> = None;
-        for s in &sim.soldiers {
-            let (x, y) = link.drawn_position(s.id as usize);
-            let ground = to_world(x, y, sim.terrain.height(x, y));
-            let centre = ground + Vec3::Y * 0.8 * marker_scale(cam_pos.distance(ground));
-            if let Ok(p) = camera.world_to_viewport(cam_tf, centre) {
-                let d = p.distance(c);
-                if d < 18.0 && best.is_none_or(|(_, bd)| d < bd) {
-                    best = Some((s.id, d));
-                }
-            }
-        }
-        match best {
-            Some((id, _)) => {
-                selection.soldier = Some(id);
-                selection.squad = Some(sim.soldiers[id as usize].squad);
-            }
-            None => {
-                selection.soldier = None;
-                selection.squad = None;
-            }
-        }
-    }
-
-    if buttons.just_pressed(MouseButton::Right) {
-        state.right_start = if over_ui { None } else { cursor };
-        state.right_dragged = 0.0;
-    }
-    if buttons.pressed(MouseButton::Right) {
-        state.right_dragged += motion.delta.length();
-    }
-    if buttons.just_released(MouseButton::Right) {
-        let start = state.right_start.take();
-        if let (Some(_), Some(c), Some(squad)) = (start, cursor, selection.squad)
-            && state.right_dragged < 5.0
-        {
-            let side = link.sim.squads[squad as usize].side;
-            if side != Side::Austria {
-                link.last_message = Some("Italian squads follow their own patrols; select an Austro-Hungarian squad.".into());
-            } else if let Ok(ray) = camera.viewport_to_world(cam_tf, c) {
-                match ground_hit(&link.sim.terrain, ray.origin, *ray.direction) {
-                    Some((x, y)) => {
-                        link.sim.order(Order::Move { squad, x, y });
-                        link.last_message = Some(format!(
-                            "Squad {squad} ordered to ({x:.0}, {y:.0}), {:.0} m up.",
-                            link.sim.terrain.height(x, y)
-                        ));
-                    }
-                    None => link.last_message = Some("That is off the map.".into()),
-                }
-            }
-        }
-    }
 }

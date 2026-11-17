@@ -111,7 +111,7 @@ fn chunk_mesh(t: &Terrain, c0: usize, r0: usize) -> Mesh {
         .with_inserted_indices(Indices::U32(indices))
 }
 
-fn spawn_terrain(
+pub fn spawn_terrain(
     mut commands: Commands,
     link: Res<SimLink>,
     mut meshes: ResMut<Assets<Mesh>>,

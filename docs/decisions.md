@@ -97,3 +97,42 @@ Technical choices made while building step 1 (Claude's call, recorded so they ca
   A. Battistini, G. Dotta (2023). TINITALY, a digital elevation model of Italy with a 10 meters cell
   size (Version 1.1). Istituto Nazionale di Geofisica e Vulcanologia (INGV).
   https://doi.org/10.13127/tinitaly/1.1
+
+## 2026-11-17 — A second view: the 2D map
+
+The director asked for a 2D view with the same capabilities as the 3D one. Decided one point at a
+time.
+
+| # | Topic | Chosen | Rejected | Why |
+| --- | --- | --- | --- | --- |
+| 23 | What the 2D view is | A separate map drawn as a period staff map; everything playable in both views | The 3D world seen from straight above (Claude's recommendation: about a day's work, nothing drawn twice); a small overview map in a corner; waiting until the sector seat | A separate map can later show things the 3D view does not: symbols, names, only what the reports say. Cost accepted: everything drawn on the ground is drawn twice. Clicks, orders and panels are shared, so only the drawing doubles |
+| 24 | When it is built | Now, after step 1 and before step 2 | Inside step 2 (makes the deliberately crude step bigger); at step 9 with the final look (every feature from steps 2 to 8 retrofitted) | The view code is still small, and step 2 then builds each new feature for both views from the start |
+| 25 | How it looks now | The period look from the start: paper, hand-drawn style relief, lettered names, period-style squad symbols | Plain now, period look before step 9 | "Plain now" was chosen first, then reversed: a plain separate map looks much like the cheaper top-down view while costing the same double work, so the separate map only pays if it looks like what it is. Revisited with the other screens before step 9 |
+| 26 | Soldiers on the map | One symbol per squad when zoomed out, each man as a dot up close | Squad symbols only (a straggler would show only in 3D); every man as a dot (cluttered at 200, unreadable at thousands) | Same rule as the 3D view (shapes far, figures near), readable at every zoom, and it scales to the sector seat. Clicking a squad symbol also picks its leading man, so "what this man can see" still has an observer |
+| 27 | Colours of the sides | Own troops (Austro-Hungarian) blue, Italians red, in both views; the 3D view's orange becomes red | Red for own troops | No fixed rule existed: maps of the time used either way round. German trench maps drew their own positions in blue, which also matches today's habit, so players read it without a legend |
+
+Technical choices for the map (Claude's call, recorded so they can be revisited):
+
+- **Same ground as the simulation.** The map reads the simulation's heights and splits each grid
+  square into the same two triangles, so contour lines and steep ground on the map are exactly what
+  the soldiers walk on.
+- **Names only where the height data proves the place.** Col di Lana (the summit at the map centre),
+  Settsass (2,575 m, the highest point on the map, 2.5 km north) and Monte Sief (2,425 m, 610 m
+  north-west along the ridge, the height decision 14 checked).
+  Villages and passes wait until their positions are checked against old maps.
+- **Lettering font** is Old Standard (SIL Open Font License), modelled on book type of around 1900,
+  kept in the repository with its licence file (`crates/alpine_front/src/fonts/`).
+- **Squad flags** copy the practice of pinning little flags into wall maps; they are not a copy of
+  any one army's official symbol set.
+- **Forest on the map is decoration**, painted below about 1,900 m like the 3D view's green: the
+  simulation has no forest yet.
+- **A click check** (`ALPINE_CLICK_CHECK=1`) clicks a squad, orders it and switches views with M,
+  through the same code as the real mouse, so both views are proven playable without a person.
+
+### Sources used
+
+- [NYPL Map Division: WWI maps](https://live-legacy-admin.nypl.org/blog/2015/05/15/wwi-map-division)
+  — German trench maps overprinted German positions in blue
+- [Habsburg WW1: Galicia 1915](https://ww1.habsburger.net/en/node/5811) and
+  [Leo Baeck Institute: Bardach's map](https://www.lbi.org/web-exhibits/WWI/ExhibitWWIPart3_Map.html)
+  — other maps of the time used the colours differently, so there was no single convention

@@ -1,0 +1,227 @@
+//! Automatic click check (environment variable `ALPINE_CLICK_CHECK=1`), for proving that both views
+//! can be played the same way. In whichever view the game starts in, it:
+//! 1. left-clicks an Austro-Hungarian squad (its flag on the map, one of its men in 3D),
+//! 2. right-clicks the ground about 150 m from the squad (a point the camera can see) to send it there,
+//! 3. presses M to switch views.
+//!
+//! The clicks go through the same code as the real mouse (`orders.rs`), with a stand-in cursor
+//! position, so the real mouse pointer is never moved. Prints one CLICK-CHECK line and exits.
+
+use crate::map_view::{FLAG_PICK_OFFSET_PX, MapView, squad_anchor};
+use crate::orders::{CursorOverride, clicks};
+use crate::sim_link::SimLink;
+use crate::terrain_view::{ground_hit, to_world};
+use crate::units::{Selection, marker_scale};
+use crate::view::{MapCam, TerrainCam, ViewMode, switch_key};
+use alpine_sim::sim::Side;
+use bevy::prelude::*;
+use bevy::window::PrimaryWindow;
+
+const SETTLE_S: f32 = 3.0;
+/// The order must land within this many metres of the point clicked.
+const ORDER_TOLERANCE_M: f32 = 3.0;
+
+pub struct ClickCheckPlugin;
+
+impl Plugin for ClickCheckPlugin {
+    fn build(&self, app: &mut App) {
+        if std::env::var("ALPINE_CLICK_CHECK").is_ok() {
+            app.add_systems(Update, run.before(clicks).before(switch_key));
+        }
+    }
+}
+
+#[derive(Default)]
+struct Check {
+    step: u32,
+    squad: Option<u32>,
+    target: (f32, f32),
+    started_in: Option<ViewMode>,
+    results: Vec<String>,
+    passed: bool,
+}
+
+type Cam<'a> = (&'a Camera, &'a GlobalTransform);
+
+/// Where something at this map/ground point appears on screen in the current view.
+fn on_screen(mode: ViewMode, link: &SimLink, terrain: Cam, map: Cam, (x, y): (f32, f32), lift: f32) -> Option<Vec2> {
+    match mode {
+        ViewMode::Map => map.0.world_to_viewport(map.1, Vec3::new(x, y, 0.0)).ok(),
+        ViewMode::Terrain => {
+            let p = to_world(x, y, link.sim.terrain.height(x, y) + lift);
+            terrain.0.world_to_viewport(terrain.1, p).ok()
+        }
+    }
+}
+
+/// An Austro-Hungarian squad whose click target is on screen, in the open part of the window, and at
+/// least 25 pixels from any other squad's (so the click cannot be ambiguous).
+#[allow(clippy::too_many_arguments)]
+fn choose(mode: ViewMode, link: &SimLink, map: &MapView, window: &Window, terrain: Cam, map_cam: Cam) -> Option<(u32, Vec2)> {
+    let sim = &link.sim;
+    // Each squad's click point: the flag on the map, the first man in 3D.
+    let points: Vec<(u32, Side, Vec2)> = sim
+        .squads
+        .iter()
+        .filter_map(|q| {
+            let p = match mode {
+                ViewMode::Map if !map.shows_men() => {
+                    on_screen(mode, link, terrain, map_cam, squad_anchor(link, q.id)?, 0.0)? + FLAG_PICK_OFFSET_PX
+                }
+                _ => {
+                    let lead = q.members[0] as usize;
+                    let (x, y) = link.drawn_position(lead);
+                    let distance = terrain.1.translation().distance(to_world(x, y, sim.terrain.height(x, y)));
+                    let lift = if mode == ViewMode::Terrain { 0.8 * marker_scale(distance) } else { 0.0 };
+                    let p = on_screen(mode, link, terrain, map_cam, (x, y), lift)?;
+                    // In 3D, skip men hidden behind a ridge: the ground under the click must be his.
+                    if mode == ViewMode::Terrain {
+                        let feet = on_screen(mode, link, terrain, map_cam, (x, y), 0.0)?;
+                        let ray = terrain.0.viewport_to_world(terrain.1, feet).ok()?;
+                        let (hx, hy) = ground_hit(&sim.terrain, ray.origin, *ray.direction)?;
+                        if ((hx - x).powi(2) + (hy - y).powi(2)).sqrt() > 10.0 {
+                            return None;
+                        }
+                    }
+                    p
+                }
+            };
+            Some((q.id, q.side, p))
+        })
+        .collect();
+    let open = |p: Vec2| p.x > 520.0 && p.x < window.width() - 40.0 && p.y > 60.0 && p.y < window.height() - 40.0;
+    points
+        .iter()
+        .filter(|(_, side, p)| *side == Side::Austria && open(*p))
+        .find(|(id, _, p)| points.iter().all(|(o, _, op)| o == id || op.distance(*p) > 25.0))
+        .map(|&(id, _, p)| (id, p))
+}
+
+#[allow(clippy::too_many_arguments)] // a Bevy system: each argument is a piece of game state it reads
+fn run(
+    time: Res<Time>,
+    mode: Res<ViewMode>,
+    link: Res<SimLink>,
+    map: Res<MapView>,
+    selection: Res<Selection>,
+    window: Single<&Window, With<PrimaryWindow>>,
+    terrain_cam: Single<Cam, With<TerrainCam>>,
+    map_cam: Single<Cam, With<MapCam>>,
+    mut cursor: ResMut<CursorOverride>,
+    mut mouse: ResMut<ButtonInput<MouseButton>>,
+    mut keys: ResMut<ButtonInput<KeyCode>>,
+    mut check: Local<Check>,
+    mut exit: MessageWriter<AppExit>,
+) {
+    if time.elapsed_secs() < SETTLE_S {
+        return;
+    }
+    let (terrain_cam, map_cam) = (*terrain_cam, *map_cam);
+    let view_name = |m: ViewMode| if m == ViewMode::Map { "map" } else { "terrain" };
+    let c = &mut *check;
+    match c.step {
+        0 => {
+            c.started_in = Some(*mode);
+            c.passed = true;
+            match choose(*mode, &link, &map, &window, terrain_cam, map_cam) {
+                Some((squad, p)) => {
+                    c.squad = Some(squad);
+                    cursor.0 = Some(p);
+                    mouse.press(MouseButton::Left);
+                }
+                None => {
+                    c.results.push("select=FAIL (no Austro-Hungarian squad clearly on screen)".into());
+                    c.passed = false;
+                    keys.press(KeyCode::KeyM);
+                    c.step = 5;
+                    return;
+                }
+            }
+        }
+        1 => mouse.release(MouseButton::Left),
+        2 => {
+            let squad = c.squad.unwrap();
+            if selection.squad == Some(squad) && selection.soldier.is_some() {
+                c.results.push(format!("select=ok (squad {squad})"));
+            } else {
+                c.results.push(format!("select=FAIL (wanted squad {squad}, got {:?})", selection.squad));
+                c.passed = false;
+            }
+            // A point near the squad that is on screen and, in 3D, not hidden behind a ridge.
+            let (x, y) = squad_anchor(&link, squad).unwrap();
+            let t = &link.sim.terrain;
+            let open = |p: Vec2| p.x > 520.0 && p.x < window.width() - 40.0 && p.y > 60.0 && p.y < window.height() - 40.0;
+            let visible = |target: (f32, f32), p: Vec2| match *mode {
+                ViewMode::Map => true,
+                ViewMode::Terrain => terrain_cam
+                    .0
+                    .viewport_to_world(terrain_cam.1, p)
+                    .ok()
+                    .and_then(|ray| ground_hit(t, ray.origin, *ray.direction))
+                    .is_some_and(|(hx, hy)| ((hx - target.0).powi(2) + (hy - target.1).powi(2)).sqrt() <= ORDER_TOLERANCE_M),
+            };
+            let found = [(150.0, 0.0), (-150.0, 0.0), (0.0, -150.0), (0.0, 150.0), (100.0, -100.0), (-100.0, -100.0)]
+                .into_iter()
+                .map(|(dx, dy)| (x + dx, y + dy))
+                .filter(|&(tx, ty)| t.in_bounds(tx, ty))
+                .find_map(|target| {
+                    let p = on_screen(*mode, &link, terrain_cam, map_cam, target, 0.0)?;
+                    (open(p) && visible(target, p)).then_some((target, p))
+                });
+            match found {
+                Some((target, p)) => {
+                    c.target = target;
+                    cursor.0 = Some(p);
+                    mouse.press(MouseButton::Right);
+                }
+                None => {
+                    c.results.push("order=FAIL (no visible point near the squad)".into());
+                    c.passed = false;
+                    keys.press(KeyCode::KeyM);
+                    c.step = 5;
+                    return;
+                }
+            }
+        }
+        3 => mouse.release(MouseButton::Right),
+        4 => {
+            let squad = c.squad.unwrap();
+            let msg = link.last_message.clone().unwrap_or_default();
+            let ordered = msg.starts_with(&format!("Squad {squad} ordered to ("));
+            let at = msg
+                .split(['(', ')'])
+                .nth(1)
+                .and_then(|xy| xy.split_once(", "))
+                .and_then(|(x, y)| Some((x.parse::<f32>().ok()?, y.parse::<f32>().ok()?)));
+            let off = at.map(|(x, y)| ((x - c.target.0).powi(2) + (y - c.target.1).powi(2)).sqrt());
+            match off {
+                Some(d) if ordered && d <= ORDER_TOLERANCE_M => c.results.push(format!("order=ok ({d:.1} m from the point clicked)")),
+                _ => {
+                    c.results.push(format!("order=FAIL ({msg})"));
+                    c.passed = false;
+                }
+            }
+            cursor.0 = None;
+            keys.press(KeyCode::KeyM);
+        }
+        5 => keys.release(KeyCode::KeyM),
+        6 => {
+            let started = c.started_in.unwrap_or(*mode);
+            if *mode != started {
+                c.results.push(format!("switch=ok (now {})", view_name(*mode)));
+            } else {
+                c.results.push("switch=FAIL (M did not change the view)".into());
+                c.passed = false;
+            }
+            println!(
+                "CLICK-CHECK view={} {} {}",
+                view_name(started),
+                if c.passed { "PASS" } else { "FAIL" },
+                c.results.join(" ")
+            );
+            exit.write(AppExit::Success);
+        }
+        _ => {}
+    }
+    c.step += 1;
+}

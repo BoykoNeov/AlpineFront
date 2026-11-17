@@ -4,9 +4,10 @@
 //!    two per core, read from Windows' own description of the CPU.
 //! 2. Simulation check: runs the step-1 scenario with every squad moving and times every update.
 //!    At the fastest game speed each update must use no more than half the time it has.
-//! 3. Frame check: launches the game at 2560x1440 with vsync off, flies the camera over the map and
-//!    reads back its frame times. 99% of frames must finish within 11 ms (30 fps on an RTX 3070,
-//!    taken as about a third of the RTX 5090's speed).
+//! 3. Frame check, once per view: launches the game at 2560x1440 with vsync off, flies the camera
+//!    over the 3D terrain (then pans and zooms the 2D map) and reads back its frame times. In each
+//!    view 99% of frames must finish within 11 ms (30 fps on an RTX 3070, taken as about a third of
+//!    the RTX 5090's speed).
 //! 4. For information only: how the simulation copes with 1,000, 3,000 and 5,000 soldiers.
 //!
 //! Build everything in release mode first, then run:
@@ -142,13 +143,13 @@ fn time_ticks(sim: &mut alpine_sim::sim::Sim, ticks: u64, budget_ms: f64, pace_m
     Timing { ticks: t.len(), mean, p50: pct(0.5), p99: pct(0.99), p999: pct(0.999), max: t[t.len() - 1], over }
 }
 
-fn frame_check() -> Result<(FrameVerdict, String), String> {
+fn frame_check(view: &str) -> Result<(FrameVerdict, String), String> {
     let exe = std::env::current_exe().map_err(|e| e.to_string())?.with_file_name("alpine_front.exe");
     if !exe.exists() {
         return Err(format!("{} not found: run `cargo build --release --workspace` first", exe.display()));
     }
     let out = Command::new(&exe)
-        .args(["--frame-check", &FRAME_CHECK_SECONDS.to_string()])
+        .args(["--frame-check", &FRAME_CHECK_SECONDS.to_string(), "--view", view])
         .output()
         .map_err(|e| format!("could not start the game: {e}"))?;
     let text = String::from_utf8_lossy(&out.stdout);
@@ -163,8 +164,9 @@ fn frame_check() -> Result<(FrameVerdict, String), String> {
     let (frames, p50, p99, max) = (read("frames")?, read("p50")?, read("p99")?, read("max")?);
     let (cpu50, cpu99, gpu50, gpu99) = (read("cpu_p50")?, read("cpu_p99")?, read("gpu_p50")?, read("gpu_p99")?);
     let window = line.split("window ").nth(1).and_then(|r| r.split(';').next()).unwrap_or("?");
+    let moving = if view == "map" { "the map panning and zooming" } else { "camera flying over the terrain" };
     let seen = format!(
-        "{frames:.0} frames over {FRAME_CHECK_SECONDS} s at {window}, camera flying over the map, simulation at 16x: \
+        "{frames:.0} frames over {FRAME_CHECK_SECONDS} s at {window}, {moving}, simulation at 16x: \
          typical frame {p50:.2} ms, 99% within {p99:.2} ms, slowest {max:.2} ms (limit {FRAME_LIMIT_MS} ms for 99%). \
          Work per frame: processor (main thread) typically {cpu50:.2} ms, 99% within {cpu99:.2} ms; \
          graphics card typically {gpu50:.2} ms, 99% within {gpu99:.2} ms"
@@ -249,23 +251,29 @@ fn main() {
         h.over
     );
 
-    // Frame check.
-    println!();
-    let frames = match frame_check() {
-        Ok((v, msg)) => {
-            let word = match v {
-                FrameVerdict::Pass => "PASS",
-                FrameVerdict::Fail => "FAIL",
-                FrameVerdict::NotMeasured => "NOT MEASURED",
-            };
-            println!("{word} Frames: {msg}.");
-            v
+    // Frame check, in each view; the worst verdict counts.
+    let mut frames = FrameVerdict::Pass;
+    for (view, name) in [("terrain", "3D view"), ("map", "Map")] {
+        println!();
+        let v = match frame_check(view) {
+            Ok((v, msg)) => {
+                let word = match v {
+                    FrameVerdict::Pass => "PASS",
+                    FrameVerdict::Fail => "FAIL",
+                    FrameVerdict::NotMeasured => "NOT MEASURED",
+                };
+                println!("{word} Frames, {name}: {msg}.");
+                v
+            }
+            Err(e) => {
+                println!("FAIL Frames, {name}: {e}.");
+                FrameVerdict::Fail
+            }
+        };
+        if v == FrameVerdict::Fail || (v == FrameVerdict::NotMeasured && frames == FrameVerdict::Pass) {
+            frames = v;
         }
-        Err(e) => {
-            println!("FAIL Frames: {e}.");
-            FrameVerdict::Fail
-        }
-    };
+    }
 
     // Scale, for information.
     println!();

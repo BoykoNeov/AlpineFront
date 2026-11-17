@@ -1,9 +1,12 @@
 //! Debug overlays: contour lines, steep ground, what the selected man can see, spotting lines and
-//! squad routes.
+//! squad routes. What to show is worked out once here; each view draws it in its own style (the 3D
+//! lines are drawn here, the map's in `map_view.rs`).
 
+use crate::map_view::{MapHandles, MapMaterial};
 use crate::sim_link::SimLink;
 use crate::terrain_view::{FLAG_CONTOURS, FLAG_STEEP, FLAG_VIEWSHED, TerrainHandles, TerrainMaterial, to_world};
 use crate::units::Selection;
+use crate::view::ViewMode;
 use alpine_sim::los;
 use alpine_sim::sim::{Side, SquadState};
 use bevy::prelude::*;
@@ -43,8 +46,30 @@ pub struct ViewshedState {
 struct RouteCache {
     squad: Option<u32>,
     tick: u64,
-    points: Vec<Vec3>,
+    points: Vec<(f32, f32)>,
 }
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum StrokeKind {
+    /// From a man to an enemy he can see; the side is the one doing the seeing.
+    Spotting(Side),
+    /// A squad's destination (a single point).
+    Destination(Side),
+    /// The selected squad's route.
+    Route,
+    /// The edge of the selected man's spotting range.
+    Range,
+}
+
+/// One line to draw, in simulation metres (east, north).
+pub struct Stroke {
+    pub kind: StrokeKind,
+    pub points: Vec<(f32, f32)>,
+}
+
+/// The overlay lines for this frame, shared by both views.
+#[derive(Resource, Default)]
+pub struct Strokes(pub Vec<Stroke>);
 
 pub struct OverlaysPlugin;
 
@@ -53,31 +78,38 @@ impl Plugin for OverlaysPlugin {
         app.init_resource::<OverlaySettings>()
             .init_resource::<ViewshedState>()
             .init_resource::<RouteCache>()
-            .add_systems(Update, (apply_flags, update_viewshed, draw_lines));
+            .init_resource::<Strokes>()
+            .add_systems(Update, (apply_flags, update_viewshed, (collect_strokes, draw_terrain_strokes).chain()));
     }
 }
 
+/// Passes the overlay switches to both views' ground shaders.
 fn apply_flags(
     settings: Res<OverlaySettings>,
     handles: Option<Res<TerrainHandles>>,
+    map: Option<Res<MapHandles>>,
     mut materials: ResMut<Assets<TerrainMaterial>>,
+    mut map_materials: ResMut<Assets<MapMaterial>>,
 ) {
-    let Some(handles) = handles else { return };
-    if !settings.is_changed() && !handles.is_added() {
+    let (Some(handles), Some(map)) = (handles, map) else { return };
+    if !settings.is_changed() && !handles.is_added() && !map.is_added() {
         return;
     }
+    let mut flags = 0;
+    if settings.contours {
+        flags |= FLAG_CONTOURS;
+    }
+    if settings.steep {
+        flags |= FLAG_STEEP;
+    }
+    if settings.viewshed {
+        flags |= FLAG_VIEWSHED;
+    }
     if let Some(mut m) = materials.get_mut(&handles.material) {
-        let mut flags = 0;
-        if settings.contours {
-            flags |= FLAG_CONTOURS;
-        }
-        if settings.steep {
-            flags |= FLAG_STEEP;
-        }
-        if settings.viewshed {
-            flags |= FLAG_VIEWSHED;
-        }
         m.extension.settings.flags = flags;
+    }
+    if let Some(mut m) = map_materials.get_mut(&map.material) {
+        m.settings.flags = flags;
     }
 }
 
@@ -127,32 +159,29 @@ fn update_viewshed(
     state.computed_at_tick = sim.tick;
 }
 
-fn draw_lines(
-    mut gizmos: Gizmos,
+/// Works out this frame's overlay lines.
+fn collect_strokes(
     settings: Res<OverlaySettings>,
     selection: Res<Selection>,
     link: Res<SimLink>,
     mut routes: ResMut<RouteCache>,
+    mut strokes: ResMut<Strokes>,
 ) {
     let sim = &link.sim;
     let t = &sim.terrain;
-    let eye = sim.tuning.soldier.eye_height_m;
-    let at = |i: usize| {
-        let (x, y) = link.drawn_position(i);
-        to_world(x, y, t.height(x, y) + eye)
-    };
+    let out = &mut strokes.0;
+    out.clear();
 
     if settings.spotting != SpotLines::Off {
         for s in &sim.soldiers {
             if settings.spotting == SpotLines::SelectedSquad && selection.squad != Some(s.squad) {
                 continue;
             }
-            let colour = match s.side {
-                Side::Austria => Color::srgba(0.5, 0.8, 1.0, 0.8),
-                Side::Italy => Color::srgba(1.0, 0.6, 0.2, 0.8),
-            };
             for &e in &s.sees {
-                gizmos.line(at(s.id as usize), at(e as usize), colour);
+                out.push(Stroke {
+                    kind: StrokeKind::Spotting(s.side),
+                    points: vec![link.drawn_position(s.id as usize), link.drawn_position(e as usize)],
+                });
             }
         }
     }
@@ -162,10 +191,8 @@ fn draw_lines(
             if !matches!(q.state, SquadState::Moving | SquadState::Planning { .. }) {
                 continue;
             }
-            if let Some((x, y)) = q.dest {
-                let g = to_world(x, y, t.height(x, y));
-                let colour = if q.side == Side::Austria { Color::srgb(0.4, 0.7, 1.0) } else { Color::srgb(1.0, 0.55, 0.2) };
-                gizmos.line(g, g + Vec3::Y * 40.0, colour);
+            if let Some(d) = q.dest {
+                out.push(Stroke { kind: StrokeKind::Destination(q.side), points: vec![d] });
             }
         }
         // Route of the selected squad, refreshed every couple of game seconds.
@@ -174,32 +201,65 @@ fn draw_lines(
                 if routes.squad != Some(q.id) || sim.tick >= routes.tick + 20 {
                     let lead = &sim.soldiers[q.members[0] as usize];
                     let field = q.field.as_ref().unwrap();
-                    routes.points = field
-                        .route_from(t, &sim.tuning.walking, lead.x, lead.y, 2000)
-                        .into_iter()
-                        .map(|(x, y)| to_world(x, y, t.height(x, y) + 2.0))
-                        .collect();
+                    routes.points = field.route_from(t, &sim.tuning.walking, lead.x, lead.y, 2000);
                     routes.squad = Some(q.id);
                     routes.tick = sim.tick;
                 }
-                gizmos.linestrip(routes.points.iter().copied(), Color::srgb(1.0, 1.0, 0.3));
+                out.push(Stroke { kind: StrokeKind::Route, points: routes.points.clone() });
             }
             _ => routes.squad = None,
         }
     }
 
-    // Spotting range around the selected man, following the ground.
+    // Spotting range around the selected man.
     if settings.viewshed
         && let Some(obs) = selection.soldier
     {
         let (cx, cy) = link.drawn_position(obs as usize);
         let r = sim.tuning.spotting.spotting_range_m;
-        let ring = (0..=180).map(|k| {
-            let a = k as f32 / 180.0 * std::f32::consts::TAU;
-            let (x, y) = (cx + r * a.cos(), cy + r * a.sin());
-            let (x, y) = (x.clamp(t.min_x(), t.max_x()), y.clamp(t.min_y(), t.max_y()));
-            to_world(x, y, t.height(x, y) + 3.0)
-        });
-        gizmos.linestrip(ring, Color::srgb(1.0, 0.85, 0.3));
+        let ring = (0..=180)
+            .map(|k| {
+                let a = k as f32 / 180.0 * std::f32::consts::TAU;
+                let (x, y) = (cx + r * a.cos(), cy + r * a.sin());
+                (x.clamp(t.min_x(), t.max_x()), y.clamp(t.min_y(), t.max_y()))
+            })
+            .collect();
+        out.push(Stroke { kind: StrokeKind::Range, points: ring });
+    }
+}
+
+/// Side colours in the 3D view: own troops blue, Italians red (decision 27).
+pub fn terrain_side_colour(side: Side) -> Color {
+    match side {
+        Side::Austria => Color::srgb(0.4, 0.7, 1.0),
+        Side::Italy => Color::srgb(1.0, 0.35, 0.3),
+    }
+}
+
+/// Draws the overlay lines in the 3D view, following the ground.
+fn draw_terrain_strokes(mut gizmos: Gizmos, mode: Res<ViewMode>, link: Res<SimLink>, strokes: Res<Strokes>) {
+    if *mode != ViewMode::Terrain {
+        return;
+    }
+    let sim = &link.sim;
+    let t = &sim.terrain;
+    let eye = sim.tuning.soldier.eye_height_m;
+    let at = |(x, y): (f32, f32), lift: f32| to_world(x, y, t.height(x, y) + lift);
+    for s in &strokes.0 {
+        match s.kind {
+            StrokeKind::Spotting(side) => {
+                gizmos.line(at(s.points[0], eye), at(s.points[1], eye), terrain_side_colour(side).with_alpha(0.8));
+            }
+            StrokeKind::Destination(side) => {
+                let g = at(s.points[0], 0.0);
+                gizmos.line(g, g + Vec3::Y * 40.0, terrain_side_colour(side));
+            }
+            StrokeKind::Route => {
+                gizmos.linestrip(s.points.iter().map(|&p| at(p, 2.0)), Color::srgb(1.0, 1.0, 0.3));
+            }
+            StrokeKind::Range => {
+                gizmos.linestrip(s.points.iter().map(|&p| at(p, 3.0)), Color::srgb(1.0, 0.85, 0.3));
+            }
+        }
     }
 }

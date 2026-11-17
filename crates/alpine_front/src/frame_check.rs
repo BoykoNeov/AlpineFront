@@ -1,5 +1,6 @@
 //! Speed-pass frame check (`--frame-check SECONDS`): flies the camera over the map at top game speed
-//! with vsync off, records every frame, prints a summary line and exits.
+//! with vsync off, records every frame, prints a summary line and exits. With `--view map` it pans
+//! and zooms the 2D map instead, through both the squad flags and the individual men.
 //!
 //! Three measures, because graphics drivers often cap the frame rate (for example 119 fps on a
 //! 120 Hz screen, or 60 fps when the window is in the background), which hides how much work a
@@ -9,8 +10,10 @@
 //! - the graphics card's work per frame (summed timings of Bevy's drawing passes).
 
 use crate::Options;
+use crate::map_view::MapView;
 use crate::sim_link::SimLink;
 use crate::terrain_view::to_world;
+use crate::view::{TerrainCam, ViewMode};
 use bevy::diagnostic::DiagnosticsStore;
 use bevy::prelude::*;
 use std::time::Instant;
@@ -76,25 +79,37 @@ fn percentiles(v: &[f32]) -> (f32, f32, f32) {
     (pct(0.5), pct(0.99), s[s.len() - 1])
 }
 
+#[allow(clippy::too_many_arguments)] // a Bevy system: each argument is a piece of game state it reads
 fn run_check(
     time: Res<Time>,
     options: Res<Options>,
     mut link: ResMut<SimLink>,
     window: Single<&Window>,
     mut record: ResMut<FrameRecord>,
-    mut camera: Single<&mut Transform, With<Camera3d>>,
+    mode: Res<ViewMode>,
+    mut map: ResMut<MapView>,
+    mut camera: Single<&mut Transform, With<TerrainCam>>,
     mut exit: MessageWriter<AppExit>,
 ) {
     let Some(seconds) = options.frame_check else { return };
     let t = time.elapsed_secs();
-    // A loop around the summit, swinging between 600 m and 2,400 m out and 150 m to 650 m up.
     let a = t * 0.12;
     let r = 1500.0 + 900.0 * (t * 0.21).sin();
-    let terrain = &link.sim.terrain;
     let (x, y) = (r * a.cos(), r * a.sin());
-    let pos = to_world(x, y, terrain.height(x, y) + 400.0 + 250.0 * (t * 0.17).sin());
-    let target = to_world(0.3 * x, 0.3 * y, 2300.0);
-    **camera = Transform::from_translation(pos).looking_at(target, Vec3::Y);
+    match *mode {
+        ViewMode::Terrain => {
+            // A loop around the summit, swinging between 600 m and 2,400 m out and 150 m to 650 m up.
+            let terrain = &link.sim.terrain;
+            let pos = to_world(x, y, terrain.height(x, y) + 400.0 + 250.0 * (t * 0.17).sin());
+            let target = to_world(0.3 * x, 0.3 * y, 2300.0);
+            **camera = Transform::from_translation(pos).looking_at(target, Vec3::Y);
+        }
+        ViewMode::Map => {
+            // The same loop, zooming between 0.3 and 8 metres per pixel (men up close, flags far out).
+            map.centre = Vec2::new(x, y) * 0.6;
+            map.scale = (0.3f32.ln() + (8.0f32.ln() - 0.3f32.ln()) * (0.5 + 0.5 * (t * 0.23).sin())).exp();
+        }
+    }
 
     if t < WARM_UP_S {
         return;
@@ -105,8 +120,9 @@ fn run_check(
         let (c50, c99, cmax) = percentiles(&record.cpu);
         let (g50, g99, gmax) = percentiles(&record.gpu);
         println!(
-            "FRAME-CHECK frames={} p50={i50:.2} p99={i99:.2} max={imax:.2} cpu_p50={c50:.2} cpu_p99={c99:.2} cpu_max={cmax:.2} \
+            "FRAME-CHECK view={} frames={} p50={i50:.2} p99={i99:.2} max={imax:.2} cpu_p50={c50:.2} cpu_p99={c99:.2} cpu_max={cmax:.2} \
              gpu_p50={g50:.2} gpu_p99={g99:.2} gpu_max={gmax:.2} ms; window {}x{}; simulation tick {:.2} ms (worst {:.2})",
+            if *mode == ViewMode::Map { "map" } else { "terrain" },
             record.intervals.len(),
             window.physical_width(),
             window.physical_height(),

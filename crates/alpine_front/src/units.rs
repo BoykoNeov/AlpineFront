@@ -1,8 +1,9 @@
-//! Soldiers on screen: one simple shape each, coloured by side, brighter when an enemy can see
+//! Soldiers in the 3D view: one simple shape each, coloured by side, brighter when an enemy can see
 //! him, yellow when his squad is selected. Shapes grow with distance so they stay visible from afar.
 
 use crate::sim_link::SimLink;
 use crate::terrain_view::to_world;
+use crate::view::{TerrainCam, ViewMode};
 use alpine_sim::sim::Side;
 use bevy::prelude::*;
 
@@ -32,6 +33,18 @@ pub fn marker_scale(distance: f32) -> f32 {
     (distance / TRUE_SIZE_WITHIN_M).max(1.0)
 }
 
+/// For each soldier, whether any enemy can see him.
+pub fn seen_by_enemy(link: &SimLink) -> Vec<bool> {
+    let sim = &link.sim;
+    let mut seen = vec![false; sim.soldiers.len()];
+    for s in &sim.soldiers {
+        for &e in &s.sees {
+            seen[e as usize] = true;
+        }
+    }
+    seen
+}
+
 pub struct UnitsPlugin;
 
 impl Plugin for UnitsPlugin {
@@ -55,8 +68,8 @@ fn spawn_units(
     let mats = UnitMaterials {
         austria: flat(&mut materials, Color::srgb(0.25, 0.42, 0.85)),
         austria_seen: flat(&mut materials, Color::srgb(0.6, 0.85, 1.0)),
-        italy: flat(&mut materials, Color::srgb(0.85, 0.35, 0.1)),
-        italy_seen: flat(&mut materials, Color::srgb(1.0, 0.75, 0.35)),
+        italy: flat(&mut materials, Color::srgb(0.8, 0.12, 0.1)),
+        italy_seen: flat(&mut materials, Color::srgb(1.0, 0.55, 0.5)),
         selected: flat(&mut materials, Color::srgb(1.0, 1.0, 0.2)),
     };
     // A capsule 1.6 m tall, centred 0.8 m above the ground.
@@ -72,16 +85,15 @@ fn place_units(
     link: Res<SimLink>,
     selection: Res<Selection>,
     mats: Res<UnitMaterials>,
-    camera: Single<&Transform, (With<Camera3d>, Without<SoldierMarker>)>,
+    mode: Res<ViewMode>,
+    camera: Single<&Transform, (With<TerrainCam>, Without<SoldierMarker>)>,
     mut q: Query<(&SoldierMarker, &mut Transform, &mut MeshMaterial3d<StandardMaterial>)>,
 ) {
-    let sim = &link.sim;
-    let mut seen = vec![false; sim.soldiers.len()];
-    for s in &sim.soldiers {
-        for &e in &s.sees {
-            seen[e as usize] = true;
-        }
+    if *mode != ViewMode::Terrain {
+        return;
     }
+    let sim = &link.sim;
+    let seen = seen_by_enemy(&link);
     let cam = camera.translation;
     for (m, mut tf, mut mat) in &mut q {
         let i = m.0 as usize;
