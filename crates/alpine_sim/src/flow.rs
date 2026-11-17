@@ -39,9 +39,32 @@ pub fn walk_time(t: &Terrain, w: &WalkingTuning, ax: f32, ay: f32, bx: f32, by: 
     run / w.speed_mps(grade)
 }
 
+/// How far beyond the farthest man a bounded route calculation keeps going: this fraction of his
+/// walking time, plus a fixed margin. Men pushed off the route stay well inside it.
+const BOUND_FACTOR: f32 = 1.3;
+const BOUND_MARGIN_S: f32 = 180.0;
+
 impl FlowField {
+    /// Walking times from the whole map.
     pub fn compute(t: &Terrain, w: &WalkingTuning, dest: (usize, usize)) -> FlowField {
+        Self::compute_bounded(t, w, dest, &[])
+    }
+
+    /// Walking times from the area that matters for men starting at `from` (grid points): the
+    /// calculation stops once all of them are covered and it has gone a margin beyond. Places it
+    /// did not reach are left infinite. With `from` empty, covers the whole map.
+    pub fn compute_bounded(t: &Terrain, w: &WalkingTuning, dest: (usize, usize), from: &[(usize, usize)]) -> FlowField {
         let n = t.cols * t.rows;
+        let mut needed: Vec<bool> = vec![false; if from.is_empty() { 0 } else { n }];
+        let mut left = 0usize;
+        for &(c, r) in from {
+            let i = t.idx(c, r);
+            if !needed[i] {
+                needed[i] = true;
+                left += 1;
+            }
+        }
+        let mut limit = f32::INFINITY;
         let mut time = vec![f32::INFINITY; n];
         let mut done = vec![false; n];
         let mut heap = BinaryHeap::new();
@@ -54,7 +77,16 @@ impl FlowField {
             if done[vi] {
                 continue;
             }
+            if tv > limit {
+                break;
+            }
             done[vi] = true;
+            if left > 0 && needed[vi] {
+                left -= 1;
+                if left == 0 {
+                    limit = tv * BOUND_FACTOR + BOUND_MARGIN_S;
+                }
+            }
             let (vc, vr) = (vi % t.cols, vi / t.cols);
             let hv = t.heights[vi];
             for (k, (dc, dr)) in NEIGHBOURS.iter().enumerate() {
@@ -72,6 +104,14 @@ impl FlowField {
                 if cand < time[ui] {
                     time[ui] = cand;
                     heap.push(Item(cand, ui as u32));
+                }
+            }
+        }
+        if limit.is_finite() {
+            // Only finished values are exact; leave the rest unreached.
+            for (tv, d) in time.iter_mut().zip(&done) {
+                if !d {
+                    *tv = f32::INFINITY;
                 }
             }
         }

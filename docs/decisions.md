@@ -54,6 +54,28 @@ Technical choices made while building step 1 (Claude's call, recorded so they ca
   map in step 10.
 - **Earth curvature counts in line of sight**, with the standard allowance for air bending light. It
   hides about 1.7 m at 5 km, which is more than a standing man.
+- **Line of sight is exact**, not sampled: it checks the ground at every place the sight line crosses
+  a triangle edge, and between those places neither ground nor sight line can bend. The same method
+  decides whether a man can walk a straight line, so a sliver of cliff between samples can't trap him.
+- **Random numbers come from a small generator written into the project** (xoshiro256**), not a
+  library: its sequence can never change under us and its state is four numbers, easy to save.
+- **Following a route.** A man joins his squad's route at the best nearby point, then always steps to
+  a point strictly closer in walking time, so he can't go round in circles. Earlier versions that
+  re-chose the next step freely left men oscillating for hours near steep ground. Men keep right
+  when meeting head-on, and a man held up for a second ignores personal space until he moves again.
+- **Walking speed** uses Tobler's hiking rule at 70% for a laden soldier. With it the locked 1,243 m
+  climb takes about 4.5 hours, against 4.4 by the Alpine trail-sign walking-time rule (DIN 33466).
+- **Speed pass runs the simulation in real time at 16×.** Run flat out, a squad's route (worked out
+  on another thread during the one game second before it moves) gets almost no real time, and the
+  update that waits for it took about 50 ms. In the game at 16× that second is 62 ms of real time.
+  So the pass/fail check paces the simulation as the game does, and the flat-out run is reported
+  as headroom. Routes now cover only the area around the squad and its way, not the whole map.
+- **Frame check is protected from driver caps.** The development PC's graphics driver held frames
+  at 119 per second (and at 60 when the game window was behind another), whatever the game did.
+  The check now also reports work per frame (about 1.2 ms on the processor and 0.3 ms on the
+  graphics card in step 1), and says "not measured" rather than failing when a cap is to blame.
+- **Camera.** Bevy's built-in free camera uses the right mouse button to grab the mouse, which
+  clashes with right-click orders, so the game has its own: right-drag looks, right-click orders.
 
 ### Sources used
 

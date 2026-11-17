@@ -64,10 +64,7 @@ impl Terrain {
         if bytes.len() != meta.columns * meta.rows * 4 {
             return Err(format!("{}: wrong size", meta.heights_file));
         }
-        let heights = bytes
-            .chunks_exact(4)
-            .map(|b| f32::from_le_bytes([b[0], b[1], b[2], b[3]]))
-            .collect();
+        let heights = bytes.as_chunks::<4>().0.iter().map(|b| f32::from_le_bytes(*b)).collect();
         let mut t = Terrain::from_heights(meta.columns, meta.rows, meta.spacing_m, heights, steepest_walkable_deg);
         t.name = meta.name;
         Ok(t)

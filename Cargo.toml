@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/sim", "crates/game"]
+members = ["crates/alpine_sim", "crates/alpine_front", "crates/speedpass"]
 
 [workspace.package]
 edition = "2024"

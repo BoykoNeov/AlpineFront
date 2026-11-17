@@ -166,12 +166,15 @@ use no more than half the time it has, and each frame must finish well inside a 
 room for an RTX 3070 class card. These margins are estimates, not measurements on real target
 hardware.
 
-- **Simulation check.** Measured at the fastest game speed the player can select, which is 16× in
-  step 1 and is raised in step 2 when quiet weeks need fast-forwarding. The report also states how
-  much faster than real time the simulation could run.
+- **Simulation check.** Measured with the simulation running in real time at the fastest game speed
+  the player can select, which is 16× in step 1 and is raised in step 2 when quiet weeks need
+  fast-forwarding. The report also states how much faster than real time the simulation could run.
 - **Frame check.** 30 frames per second on an RTX 3070. The development PC's RTX 5090 is taken as
   about three times faster (an estimate from public benchmarks), so 99% of frames must finish within
-  11 ms here, measured at 2560×1440 with vsync off while the camera flies over the terrain.
+  11 ms here, measured at 2560×1440 with vsync off while the camera flies over the terrain. The
+  report also gives the processor's and graphics card's work per frame. If the graphics driver holds
+  frames back beyond the limit (for example when the window is not in front), the check reports "not
+  measured" instead of passing or failing.
 
 1. **Pipeline.** Col di Lana terrain on screen, 200 soldiers (as simple shapes) moving across it
    with correct line of sight, a free camera, the debug overlays, and a replay from a seed. No

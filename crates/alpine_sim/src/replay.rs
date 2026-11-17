@@ -54,7 +54,7 @@ impl Recorder {
     /// Call after every `Sim::step`.
     pub fn after_step(&mut self, sim: &Sim) {
         self.replay.ticks = sim.tick;
-        if sim.tick % CHECK_EVERY == 0 {
+        if sim.tick.is_multiple_of(CHECK_EVERY) {
             self.replay.checksums.push((sim.tick, sim.checksum()));
         }
     }

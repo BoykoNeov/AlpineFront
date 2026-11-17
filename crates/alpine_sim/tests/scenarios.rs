@@ -51,7 +51,7 @@ impl Watch {
                 ));
             }
         }
-        if sim.tick % 10 == 0 {
+        if sim.tick.is_multiple_of(10) {
             for q in &sim.squads {
                 if q.state != SquadState::Arrived {
                     continue;

@@ -131,7 +131,6 @@ impl FieldJob {
     }
 }
 
-const FIELD_CACHE: usize = 24;
 /// A man within this distance of his route point moves on to the next one.
 const WAYPOINT_REACHED_M: f32 = 1.5;
 /// Moving less than this in a tick counts as standing still (1 cm per second at 10 ticks a second;
@@ -155,9 +154,8 @@ pub struct Sim {
     rng: Rng,
     pool: Arc<rayon::ThreadPool>,
     scheduled: VecDeque<LoggedOrder>,
-    cache: BTreeMap<(usize, usize), Arc<FlowField>>,
-    cache_order: VecDeque<(usize, usize)>,
-    jobs: BTreeMap<(usize, usize), Arc<FieldJob>>,
+    /// Route calculations under way, by squad.
+    jobs: BTreeMap<u32, Arc<FieldJob>>,
     grid: SpatialGrid,
     by_side: [Vec<u32>; 2],
     formation: Vec<(f32, f32)>,
@@ -196,8 +194,6 @@ impl Sim {
             rng: Rng::new(seed),
             pool,
             scheduled: VecDeque::new(),
-            cache: BTreeMap::new(),
-            cache_order: VecDeque::new(),
             jobs: BTreeMap::new(),
             grid: SpatialGrid::new(4.0),
             by_side: [Vec::new(), Vec::new()],
@@ -302,40 +298,41 @@ impl Sim {
 
     // ---- routes --------------------------------------------------------------------------------
 
-    fn request_field(&mut self, dp: (usize, usize)) {
-        if self.cache.contains_key(&dp) || self.jobs.contains_key(&dp) {
-            return;
+    /// Starts working out a squad's route on a worker thread. It covers the area around the squad's
+    /// men and the way to the destination, not the whole map. (Men stand still while their route is
+    /// worked out, so where they stand now is where they start from.)
+    fn request_field(&mut self, squad: u32, dp: (usize, usize)) {
+        let t = &self.terrain;
+        let mut from = Vec::new();
+        for &m in &self.squads[squad as usize].members {
+            let s = &self.soldiers[m as usize];
+            let (c0, r0) = t.nearest_point(s.x, s.y);
+            for dr in -1i32..=1 {
+                for dc in -1i32..=1 {
+                    let (c, r) = (c0 as i32 + dc, r0 as i32 + dr);
+                    if c >= 0 && r >= 0 && c < t.cols as i32 && r < t.rows as i32 {
+                        from.push((c as usize, r as usize));
+                    }
+                }
+            }
         }
         let job = Arc::new(FieldJob { result: Mutex::new(None), ready: Condvar::new() });
-        self.jobs.insert(dp, job.clone());
+        self.jobs.insert(squad, job.clone());
         let terrain = self.terrain.clone();
         let walking = self.tuning.walking.clone();
         self.pool.spawn(move || {
-            let f = Arc::new(FlowField::compute(&terrain, &walking, dp));
+            let f = Arc::new(FlowField::compute_bounded(&terrain, &walking, dp, &from));
             *job.result.lock().unwrap() = Some(f);
             job.ready.notify_all();
         });
     }
 
-    fn take_field(&mut self, dp: (usize, usize)) -> Arc<FlowField> {
-        if let Some(f) = self.cache.get(&dp) {
-            return f.clone();
+    /// The squad's route, waiting for the worker thread if it is not finished yet.
+    fn take_field(&mut self, squad: u32, dp: (usize, usize)) -> Arc<FlowField> {
+        if !self.jobs.contains_key(&squad) {
+            self.request_field(squad, dp);
         }
-        let job = match self.jobs.remove(&dp) {
-            Some(j) => j,
-            None => {
-                self.request_field(dp);
-                self.jobs.remove(&dp).unwrap()
-            }
-        };
-        let f = job.wait();
-        self.cache.insert(dp, f.clone());
-        self.cache_order.push_back(dp);
-        while self.cache_order.len() > FIELD_CACHE {
-            let old = self.cache_order.pop_front().unwrap();
-            self.cache.remove(&old);
-        }
-        f
+        self.jobs.remove(&squad).unwrap().wait()
     }
 
     fn start_move(&mut self, squad: u32, x: f32, y: f32) {
@@ -359,12 +356,12 @@ impl Sim {
             s.waypoint = None;
             s.still_ticks = 0;
         }
-        self.request_field(dp);
+        self.request_field(squad, dp);
     }
 
     fn begin_moving(&mut self, squad: u32) {
         let dp = self.squads[squad as usize].dest_point.unwrap();
-        let field = self.take_field(dp);
+        let field = self.take_field(squad, dp);
         let (dx, dy) = self.terrain.point_xy(dp.0, dp.1);
         let members = self.squads[squad as usize].members.clone();
         let reachable = members.iter().any(|&m| {
@@ -640,7 +637,7 @@ impl MoveCtx<'_> {
         } else {
             // Join the route at the best nearby point, then follow it point by point. Re-join if
             // held up for a while (pushed off the route).
-            let stuck = s.still_ticks > 0 && s.still_ticks % STUCK_REJOIN_TICKS == 0;
+            let stuck = s.still_ticks > 0 && s.still_ticks.is_multiple_of(STUCK_REJOIN_TICKS);
             match waypoint {
                 None => waypoint = field.next_waypoint(t, &tu.walking, s.x, s.y),
                 Some(_) if stuck => waypoint = field.next_waypoint(t, &tu.walking, s.x, s.y),
