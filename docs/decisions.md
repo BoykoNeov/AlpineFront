@@ -146,7 +146,7 @@ Step 2 starts by rebuilding the summit as it was before the Italian mine of 17 A
 | --- | --- | --- | --- | --- |
 | 28 | How the pre-1916 summit is rebuilt | Fill the mine's crater only; today's high point (2,460 m in the elevation data) stays the top | Fill the crater and make the old top 10 m higher; take "about 90 feet (27 m) lower" at face value | The crater is the only change a solid source supports. Raising the top would be invented: +10 m leaves two sight tests passing by under a metre, +27 m breaks two locked tests (summit to Monte Sief, and the rounded top). Filling the crater changes no test result at all. If a height from before the war turns up, the rebuild script takes it as one number |
 
-**Correction to earlier notes.** Decision 19, the scenario-test notes and the step-1 sources said the
+**Correction to earlier notes.** The scenario-test notes and the step-1 sources said the
 mine took "roughly 27 m" off the summit. That came from one travel article (Smithsonian, "about 90
 feet lower"). The list of Italian-front mines, drawn from Striffler's study of the 34 mines on the
 Tyrolean front, gives an oblong double crater 35 m long, 25 m wide and 12 m deep; the Italian

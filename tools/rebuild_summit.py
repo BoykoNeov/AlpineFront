@@ -22,8 +22,12 @@ CRATER_HALF_NORTH_M = 26.0
 
 # How much higher than today's high point the summit stood before the blast. No source gives a
 # height from before the war, so this is 0 (decision 28). If one turns up, set it here: a rounded cap
-# centred over the crater is raised until the top reaches today's high point plus this many metres.
+# centred between today's high point and the crater is raised until the top reaches today's high
+# point plus this many metres. These centre and radius values are the ones measured for decision 28
+# (10 m: all tests pass, two by under a metre). Any change to the ground means re-measuring the tests.
 RAISE_TOP_M = 0.0
+RAISE_CENTRE_EAST_M = -15.0
+RAISE_CENTRE_NORTH_M = 32.0
 RAISE_RADIUS_M = 80.0
 
 FILL_ITERATIONS = 4000
@@ -52,7 +56,7 @@ def rebuild(grid: np.ndarray, spacing: float) -> np.ndarray:
     if RAISE_TOP_M > 0.0:
         rows, cols = g.shape
         top = g[rows // 2, cols // 2] + RAISE_TOP_M
-        d = np.hypot(east - CRATER_EAST_M, north - CRATER_NORTH_M)
+        d = np.hypot(east - RAISE_CENTRE_EAST_M, north - RAISE_CENTRE_NORTH_M)
         w = np.where(d < RAISE_RADIUS_M, np.cos(np.clip(d / RAISE_RADIUS_M, 0, 1) * np.pi / 2) ** 2, 0.0)
         lo, hi = 0.0, 200.0
         for _ in range(60):  # find the lift whose resulting highest point is exactly `top`
