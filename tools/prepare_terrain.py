@@ -1,7 +1,8 @@
 """Cut the game map out of the TINITALY 10 m elevation model.
 
 Downloads the two TINITALY 1.1 tiles that cover Col di Lana (about 170 MB, kept out of the repo),
-merges them, crops a square centred on the summit and writes:
+merges them, crops a square centred on the summit, rebuilds the summit as it was before the April
+1916 mine (tools/rebuild_summit.py) and writes:
 
     data/terrain/col_di_lana.heights   raw little-endian f32 heights in metres, row by row,
                                        first row = southern edge, west to east
@@ -22,6 +23,8 @@ import numpy as np
 import rasterio
 from rasterio.merge import merge
 from rasterio.warp import transform
+
+from rebuild_summit import rebuild
 
 TILES = ["w51570", "w51070"]
 TILE_URL = "https://tinitaly.pi.ingv.it/data_1.1/{t}_s10/{t}_s10.zip"
@@ -86,6 +89,8 @@ def main() -> None:
     # Settsass (2,575 m) is inside the map and higher, so check only the summit's surroundings.
     near = grid[centre - 50:centre + 51, centre - 50:centre + 51]
     assert abs(grid[centre, centre] - near.max()) < 0.01, "summit is not the local high point"
+    # Fill the April 1916 mine crater (tools/rebuild_summit.py, docs/decisions.md decision 28).
+    grid = rebuild(grid, SPACING)
 
     name = "col_di_lana"
     (args.out / f"{name}.heights").write_bytes(grid.tobytes())
@@ -107,6 +112,7 @@ south_west_longitude = {sw_lon[0]:.6f}
 lowest_m = {float(grid.min()):.2f}
 highest_m = {float(grid.max()):.2f}
 source = "TINITALY 1.1, tiles {', '.join(TILES)}"
+summit = "April 1916 mine crater filled by tools/rebuild_summit.py (decision 28)"
 licence = "CC BY 4.0"
 citation = "{CITATION}"
 """

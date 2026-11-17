@@ -56,7 +56,7 @@ That makes verification tooling part of the first milestone, not a later extra:
 | Core loop | Continuous time plus a daily orders moment at dawn (optionally dusk): work roster, night patrols, standing instructions, requests to headquarters, with "same as yesterday" defaults. Building projects run for days in the background | Gives quiet weeks real choices and matches how a company was run |
 | Campaign | One company, one position, a season or a full year | Combat sits inside survival, engineering and supply |
 | Scenarios | Standalone set pieces, historical or invented | For example the mining of the Col di Lana summit |
-| Setting | Col di Lana. Modern elevation data shows the April 1916 mine crater, so the summit before the blast is rebuilt by hand | Its rounded shape suits the heightmap; a season of attacks ends in the mine; Monte Sief along the ridge leaves room to grow. Lagazuoi's ledges and overhangs need a far more complex terrain model |
+| Setting | Col di Lana. Modern elevation data shows the crater of the April 1916 mine (about 35 × 25 m and 12 m deep), so the game fills it to show the summit as it was before the blast | Its rounded shape suits the heightmap; a season of attacks ends in the mine; Monte Sief along the ridge leaves room to grow. Lagazuoi's ledges and overhangs need a far more complex terrain model |
 | Sides | Austria-Hungary first, as the summit defenders; Italy second, built around digging the mine | Defenders live on the mountain all season, so survival, building and the mine dread are the core; one side limits early content work |
 | Soldier model | Medium, built in layers: body (wounds by location, tiredness, cold and frostbite, hunger, illness), mind (morale, shock, one or two traits), abilities (shooting, mountain craft, digging, languages spoken), kit, identity, ties (home village, one close comrade), a short history log. Each build step adds its own part | Real stories without an untunable model. Rule: nothing goes in unless it changes what happens and the player can see it |
 
@@ -189,7 +189,8 @@ hardware.
    with correct line of sight, a free camera, the debug overlays, and a replay from a seed. No
    combat.
    - Map: 6 × 6 km centred on the summit, from the TINITALY 10 m elevation model. It shows today's
-     summit, crater included; the pre-1916 summit is rebuilt at the start of step 2.
+     summit, crater included; the pre-1916 summit is rebuilt at the start of step 2 (done: the
+     crater is filled, decision 28).
    - About 150 Austro-Hungarians on the summit and 50 Italians on the slopes below, in squads of
      about 10. The player clicks a squad and a destination; Italian squads follow seeded patrol
      routes.
@@ -200,8 +201,9 @@ hardware.
      with every control and overlay of the 3D view. From here on the speed pass measures frames in
      both views, and both must pass.
 2. **A week on the summit, rough.** First, the summit is rebuilt as it was before the April 1916
-   mine (from old photos and maps), and the summit sight tests are re-measured and re-approved. Then
-   the dawn orders screen, work roster, carrying parties, simple
+   mine (from old photos and maps), and the summit sight tests are re-measured and re-approved
+   (done 2026-11-17: the mine's crater is filled and every test result is unchanged, decision 28).
+   Then the dawn orders screen, work roster, carrying parties, simple
    cold and hunger, falling snow, and one night raid with basic shooting and a simple enemy officer.
    The whole game in miniature; crude is fine and is not polished.
 3. **Fire and morale.** Small-arms combat, suppression, cover, and soldiers who break.
@@ -240,6 +242,8 @@ weather.
 
 **Open questions**
 
-- [ ] What did the Col di Lana summit look like before the April 1916 mine? Rebuild it from old
-      photos and maps (scheduled for the start of step 2).
+- [x] What did the Col di Lana summit look like before the April 1916 mine? Answered 2026-11-17
+      (decision 28): much as today, without the mine's crater, which is about 35 × 25 m and 12 m
+      deep. No height from before the war has been found; if one turns up, the rebuild script
+      takes it as a single number.
 - [ ] Does Veneto's laser-scan data cover Col di Lana in finer detail than its 10 m terrain grid?

@@ -11,7 +11,8 @@ use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::sync::Arc;
 
-pub const FORMAT: u32 = 1;
+/// 2: the replay records which ground it was played on (`terrain`).
+pub const FORMAT: u32 = 2;
 /// A checksum is recorded every this many ticks.
 pub const CHECK_EVERY: u64 = 10;
 
@@ -21,6 +22,10 @@ pub struct Replay {
     pub game_version: String,
     pub scenario: String,
     pub seed: u64,
+    /// Fingerprint of the ground it was recorded on (`Terrain::fingerprint`).
+    /// Missing in format-1 files, which are then refused by the format check with a clear message.
+    #[serde(default)]
+    pub terrain: u64,
     /// The tuning file's text at the time of recording, so later edits don't break the replay.
     pub tuning_toml: String,
     /// How many ticks were recorded.
@@ -36,13 +41,14 @@ pub struct Recorder {
 }
 
 impl Recorder {
-    pub fn new(scenario: &str, seed: u64, tuning_toml: &str) -> Self {
+    pub fn new(scenario: &str, seed: u64, terrain: u64, tuning_toml: &str) -> Self {
         Recorder {
             replay: Replay {
                 format: FORMAT,
                 game_version: env!("CARGO_PKG_VERSION").to_string(),
                 scenario: scenario.to_string(),
                 seed,
+                terrain,
                 tuning_toml: tuning_toml.to_string(),
                 ticks: 0,
                 orders: Vec::new(),
@@ -85,13 +91,19 @@ impl Replay {
         let text = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
         let r: Replay = ron::from_str(&text).map_err(|e| format!("{}: {e}", path.display()))?;
         if r.format != FORMAT {
-            return Err(format!("replay format {} not supported (expected {FORMAT})", r.format));
+            return Err(format!(
+                "replay format {} not supported (expected {FORMAT}); replays saved before the map or game changed cannot be played",
+                r.format
+            ));
         }
         Ok(r)
     }
 
     /// A fresh simulation set up as at the start of the recording, with every order scheduled.
     pub fn start(&self, terrain: Arc<Terrain>, pool: Arc<rayon::ThreadPool>) -> Result<Sim, String> {
+        if terrain.fingerprint() != self.terrain {
+            return Err("this replay was recorded on different ground (the map has changed since), so it cannot be played back".to_string());
+        }
         let tuning = Tuning::from_toml(&self.tuning_toml)?;
         let mut sim = scenario::build(&self.scenario, terrain, tuning, self.seed, pool)
             .ok_or_else(|| format!("unknown scenario '{}'", self.scenario))?;
@@ -118,5 +130,23 @@ impl Replay {
             }
         }
         Ok(Verdict::Matches { ticks: sim.tick })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn refuses_different_ground() {
+        let flat = Terrain::from_heights(4, 4, 10.0, vec![0.0; 16], 45.0);
+        let mut bumped = vec![0.0; 16];
+        bumped[5] = 1.0;
+        let other = Arc::new(Terrain::from_heights(4, 4, 10.0, bumped, 45.0));
+        assert_ne!(flat.fingerprint(), other.fingerprint());
+        let rec = Recorder::new(scenario::STEP1, 1, flat.fingerprint(), "");
+        let pool = Arc::new(rayon::ThreadPoolBuilder::new().num_threads(1).build().unwrap());
+        let err = rec.replay.start(other, pool).err().expect("should refuse");
+        assert!(err.contains("different ground"), "{err}");
     }
 }

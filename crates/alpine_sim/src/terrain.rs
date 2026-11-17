@@ -103,6 +103,19 @@ impl Terrain {
         t
     }
 
+    /// A fixed checksum of the ground's shape (size, spacing and every height), so a replay can
+    /// tell whether it is being played on the ground it was recorded on.
+    pub fn fingerprint(&self) -> u64 {
+        let mut h = crate::hash::Checksum::default();
+        h.u64(self.cols as u64);
+        h.u64(self.rows as u64);
+        h.f32(self.spacing);
+        for &v in &self.heights {
+            h.f32(v);
+        }
+        h.finish()
+    }
+
     // ---- basic geometry -------------------------------------------------------------------
 
     #[inline]

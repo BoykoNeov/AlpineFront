@@ -73,8 +73,8 @@ impl SimLink {
             None => {
                 let terrain = Arc::new(Terrain::load_col_di_lana(tuning.walking.steepest_walkable_deg)?);
                 let name = if o.autoplay || o.frame_check.is_some() { scenario::STEP1_AUTOPLAY } else { scenario::STEP1 };
+                let rec = Recorder::new(name, o.seed, terrain.fingerprint(), &tuning_toml);
                 let sim = scenario::build(name, terrain, tuning, o.seed, pool).unwrap();
-                let rec = Recorder::new(name, o.seed, &tuning_toml);
                 (sim, name.to_string(), Some(rec), None)
             }
         };

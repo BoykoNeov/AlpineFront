@@ -23,7 +23,8 @@ Built in Rust with the Bevy engine.
 
 Options: `--seed N` picks a different starting layout, `--autoplay` sets every squad wandering on
 its own, `--replay FILE` plays a saved replay back and checks that it matches, and `--view map`
-starts on the map.
+starts on the map. A replay plays only on the ground it was recorded on; replays saved before the
+map changed are refused.
 
 M switches between the 3D view and the map. In both, left-click selects a squad, right-click the
 ground sends a selected Austro-Hungarian squad there, Space pauses, 1 to 5 set the speed (1x to
@@ -69,8 +70,9 @@ under the SIL Open Font License 1.1; the licence is in `crates/alpine_front/src/
 
 ## Elevation data
 
-The terrain in `data/terrain` is cut from TINITALY by `tools/prepare_terrain.py` and is used under
-the CC BY 4.0 licence:
+The terrain in `data/terrain` is cut from TINITALY by `tools/prepare_terrain.py`, which also fills
+the crater of the April 1916 mine to show the summit before the blast (`tools/rebuild_summit.py`,
+decision 28). It is used under the CC BY 4.0 licence:
 
 Tarquini S., I. Isola, M. Favalli, A. Battistini, G. Dotta (2023). TINITALY, a digital elevation
 model of Italy with a 10 meters cell size (Version 1.1). Istituto Nazionale di Geofisica e

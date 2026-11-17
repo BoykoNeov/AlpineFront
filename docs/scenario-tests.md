@@ -26,11 +26,13 @@ Places are given in metres from the Col di Lana summit (east, north).
 | 10 | **Nobody gets stuck.** In a 2-hour run with every squad on random orders, no soldier who has not arrived stands still for more than 2 game minutes. |
 | 11 | **Spacing.** Once arrived, the men of a squad stand at least 1 m apart. |
 
-**Measured on today's terrain.** Tests 2–5 and 7–9 depend on the exact shape of the ground in
-`data/terrain/col_di_lana.heights` (TINITALY 1.1, which shows the summit after the April 1916 mine
-took roughly 27 m off it). When the pre-blast summit is rebuilt, Claude re-measures these spots and
-brings the affected tests back to the director for re-approval before changing anything (decided
-2026-11-17).
+**Re-measured on the rebuilt summit (2026-11-17).** Tests 2–5 and 7–9 depend on the exact shape of
+the ground in `data/terrain/col_di_lana.heights`. That map is TINITALY 1.1 with the April 1916
+mine's crater (about 35 × 25 m, 12 m deep) filled to show the summit before the blast (decision
+28). The earlier note that the mine took roughly 27 m off the summit was wrong and is withdrawn.
+On the rebuilt summit every result, down to the margins, is identical to the original ground, so
+no expectation changed. If the ground changes again, Claude re-measures these spots and brings
+the affected tests back to the director for re-approval before changing anything.
 
 Director's notes on approval: soldiers will later be able to climb steeper ground given equipment,
 skill and suitable conditions, or by building via ferratas, so the 45° limit is a step-1

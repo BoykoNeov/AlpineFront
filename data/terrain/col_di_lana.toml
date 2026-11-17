@@ -14,5 +14,6 @@ south_west_longitude = 11.918858
 lowest_m = 1139.46
 highest_m = 2574.96
 source = "TINITALY 1.1, tiles w51570, w51070"
+summit = "April 1916 mine crater filled by tools/rebuild_summit.py (decision 28)"
 licence = "CC BY 4.0"
 citation = "Tarquini S., I. Isola, M. Favalli, A. Battistini, G. Dotta (2023). TINITALY, a digital elevation model of Italy with a 10 meters cell size (Version 1.1). Istituto Nazionale di Geofisica e Vulcanologia (INGV). https://doi.org/10.13127/tinitaly/1.1"

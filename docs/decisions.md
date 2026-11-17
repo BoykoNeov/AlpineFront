@@ -89,7 +89,7 @@ Technical choices made while building step 1 (Claude's call, recorded so they ca
 - [Mines on the Italian front, World War I (Wikipedia)](https://en.wikipedia.org/wiki/Mines_on_the_Italian_front_(World_War_I))
   — the Italian mine of 17 April 1916 (about 5 tonnes) and the earlier Austrian counter-mine of 6 April 1916
 - [Smithsonian: Climbing the Via Ferrata](https://www.smithsonianmag.com/travel/climbing-the-via-ferrata-8081616/)
-  — summit roughly 90 feet lower after the blast
+  — summit roughly 90 feet lower after the blast (withdrawn: see decision 28)
 - [Lagazuoi open-air museum](https://lagazuoi.it/Eng/page7-Open-air-Museum-of-the-Lagazuoi)
 - [Veneto terrain model (10 m mountain grid)](https://www.regione.veneto.it/web/agricoltura-e-foreste/modello-digitale-del-terreno)
 - [Veneto laser-scan data](https://www.regione.veneto.it/web/agricoltura-e-foreste/modelli-digitali-delle-chiome)
@@ -137,3 +137,49 @@ Technical choices for the map (Claude's call, recorded so they can be revisited)
 - [Habsburg WW1: Galicia 1915](https://ww1.habsburger.net/en/node/5811) and
   [Leo Baeck Institute: Bardach's map](https://www.lbi.org/web-exhibits/WWI/ExhibitWWIPart3_Map.html)
   — other maps of the time used the colours differently, so there was no single convention
+
+## 2026-11-17 — The summit before the mine
+
+Step 2 starts by rebuilding the summit as it was before the Italian mine of 17 April 1916.
+
+| # | Topic | Chosen | Rejected | Why |
+| --- | --- | --- | --- | --- |
+| 28 | How the pre-1916 summit is rebuilt | Fill the mine's crater only; today's high point (2,460 m in the elevation data) stays the top | Fill the crater and make the old top 10 m higher; take "about 90 feet (27 m) lower" at face value | The crater is the only change a solid source supports. Raising the top would be invented: +10 m leaves two sight tests passing by under a metre, +27 m breaks two locked tests (summit to Monte Sief, and the rounded top). Filling the crater changes no test result at all. If a height from before the war turns up, the rebuild script takes it as one number |
+
+**Correction to earlier notes.** Decision 19, the scenario-test notes and the step-1 sources said the
+mine took "roughly 27 m" off the summit. That came from one travel article (Smithsonian, "about 90
+feet lower"). The list of Italian-front mines, drawn from Striffler's study of the 34 mines on the
+Tyrolean front, gives an oblong double crater 35 m long, 25 m wide and 12 m deep; the Italian
+Wikipedia gives 30 × 55 m and 12 m deep. A crater of that size is not a 27 m lower summit, so the
+27 m figure is withdrawn.
+
+What was checked (Claude's work, recorded so it can be revisited):
+
+- **No pre-war height found.** Searches in English, Italian and German for the summit's height on
+  maps from before the war found nothing. Today's sources give 2,452, 2,462 or 2,465 m.
+- **Where the crater is.** At 10 m detail the crater shows only as an oblong hollow about 6 m deep,
+  30 to 50 m north-north-west of today's high point, about the recorded size. That is taken as the
+  crater; it is a reading of the data, not a surveyed position.
+- **How it is filled.** `tools/rebuild_summit.py` fills an oval of 40 × 52 m around that hollow with
+  the smoothest surface that meets the ground around it, never lowering any point. The oval is a
+  little larger than the recorded crater because the 10 m grid smears the hole. `prepare_terrain.py`
+  runs it every time it builds the map, always on the untouched elevation data. 14 grid points
+  rise, by at most about 5 m.
+- **Tests re-measured.** All 11 locked tests were run on the rebuilt summit and on the two rejected
+  versions. On the rebuilt summit every result, down to the margins, is identical to today's
+  ground, so no expectation changes.
+- **Replays now record the ground.** A replay stores a fingerprint of the map it was recorded on and
+  refuses to play on different ground, instead of reporting a false "diverged". Replays saved before
+  this change can no longer be played.
+- **Finer elevation data** (the open question about Veneto's laser scan) would sharpen today's
+  crater but cannot show the ground before 1916, so it was not pursued for this.
+
+### Sources used
+
+- [Mines on the Italian front, World War I (Wikipedia)](https://en.wikipedia.org/wiki/Mines_on_the_Italian_front_(World_War_I))
+  — the 17 April 1916 mine: 5,020 kg, an oblong double crater 35 × 25 m and 12 m deep, citing
+  R. Striffler, *Die 34 Minensprengungen an der Tiroler Gebirgsfront 1916–1918* (1993)
+- [Col di Lana (Italian Wikipedia)](https://it.wikipedia.org/wiki/Col_di_Lana) — crater 30 × 55 m,
+  12 m deep
+- [Smithsonian: Climbing the Via Ferrata](https://www.smithsonianmag.com/travel/climbing-the-via-ferrata-8081616/)
+  — the "about 90 feet lower" claim, now withdrawn
