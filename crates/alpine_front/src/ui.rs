@@ -39,7 +39,15 @@ fn shortcuts(
     if keys.just_pressed(KeyCode::Space) {
         link.paused = !link.paused;
     }
-    let digits = [KeyCode::Digit1, KeyCode::Digit2, KeyCode::Digit3, KeyCode::Digit4, KeyCode::Digit5];
+    let digits = [
+        KeyCode::Digit1,
+        KeyCode::Digit2,
+        KeyCode::Digit3,
+        KeyCode::Digit4,
+        KeyCode::Digit5,
+        KeyCode::Digit6,
+        KeyCode::Digit7,
+    ];
     for (k, s) in digits.iter().zip(SPEEDS) {
         if keys.just_pressed(*k) {
             link.speed = s;
@@ -288,7 +296,7 @@ fn panels(
                     }
                 }
                 ui.label("Right-click the ground: send the selected squad there");
-                ui.label("Space: pause    1 to 5: speed 1x to 16x    F5: save replay");
+                ui.label("Space: pause    1 to 7: speed 1x to 64x    F5: save replay");
                 ui.label("M: switch between the 3D view and the map");
             });
         });

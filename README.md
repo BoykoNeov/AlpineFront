@@ -27,8 +27,8 @@ starts on the map. A replay plays only on the ground it was recorded on; replays
 map changed are refused.
 
 M switches between the 3D view and the map. In both, left-click selects a squad, right-click the
-ground sends a selected Austro-Hungarian squad there, Space pauses, 1 to 5 set the speed (1x to
-16x), F5 saves a replay into `replays/`, and the panel on the left switches the overlays.
+ground sends a selected Austro-Hungarian squad there, Space pauses, 1 to 7 set the speed (1x to
+64x), F5 saves a replay into `replays/`, and the panel on the left switches the overlays.
 
 - 3D view: W A S D move, Q / E down / up, Shift faster, mouse wheel changes camera speed, hold the
   right mouse button and drag to look around. Left-click a soldier to select his squad.
@@ -58,6 +58,10 @@ Step 1 result (2026-11-17): passed in three runs. Slowest simulation update 1.7 
 
 With the map (2026-11-17): passed. Slowest simulation update 1.4 ms; 99% of frames within 8.6 ms in
 both the 3D view and the map.
+
+At 64x, the top speed from step 2 (2026-11-17): FAILED on the simulation, frames passed. 11 of
+18,000 updates went over the 0.78 ms limit, the slowest by 40 ms, all waiting for a squad's route;
+the fix is the next piece of work.
 
 `ALPINE_CLICK_CHECK=1 target\release\alpine_front.exe --view map` (or `--view terrain`) checks that a
 view can be played: it clicks a squad, orders it, on the map also zooms with the wheel, moves the

@@ -7,7 +7,7 @@
 # Simulation updates per game second.
 ticks_per_second = 10
 # Fastest game speed the player can choose. The speed pass measures the simulation at this speed.
-max_speed = 16
+max_speed = 64
 
 [threads]
 # Worker threads the simulation splits its work across.

@@ -143,7 +143,7 @@ fn time_ticks(sim: &mut alpine_sim::sim::Sim, ticks: u64, budget_ms: f64, pace_m
     Timing { ticks: t.len(), mean, p50: pct(0.5), p99: pct(0.99), p999: pct(0.999), max: t[t.len() - 1], over }
 }
 
-fn frame_check(view: &str) -> Result<(FrameVerdict, String), String> {
+fn frame_check(view: &str, top: f64) -> Result<(FrameVerdict, String), String> {
     let exe = std::env::current_exe().map_err(|e| e.to_string())?.with_file_name("alpine_front.exe");
     if !exe.exists() {
         return Err(format!("{} not found: run `cargo build --release --workspace` first", exe.display()));
@@ -166,7 +166,7 @@ fn frame_check(view: &str) -> Result<(FrameVerdict, String), String> {
     let window = line.split("window ").nth(1).and_then(|r| r.split(';').next()).unwrap_or("?");
     let moving = if view == "map" { "the map panning and zooming" } else { "camera flying over the terrain" };
     let seen = format!(
-        "{frames:.0} frames over {FRAME_CHECK_SECONDS} s at {window}, {moving}, simulation at 16x: \
+        "{frames:.0} frames over {FRAME_CHECK_SECONDS} s at {window}, {moving}, simulation at {top}x: \
          typical frame {p50:.2} ms, 99% within {p99:.2} ms, slowest {max:.2} ms (limit {FRAME_LIMIT_MS} ms for 99%). \
          Work per frame: processor (main thread) typically {cpu50:.2} ms, 99% within {cpu99:.2} ms; \
          graphics card typically {gpu50:.2} ms, 99% within {gpu99:.2} ms"
@@ -255,7 +255,7 @@ fn main() {
     let mut frames = FrameVerdict::Pass;
     for (view, name) in [("terrain", "3D view"), ("map", "Map")] {
         println!();
-        let v = match frame_check(view) {
+        let v = match frame_check(view, top) {
             Ok((v, msg)) => {
                 let word = match v {
                     FrameVerdict::Pass => "PASS",
@@ -291,7 +291,7 @@ fn main() {
             t.p50,
             t.max,
             1000.0 / tps / t.mean,
-            if t.mean <= budget { "" } else { " (over the 16x limit)" }
+            if t.mean <= budget { String::new() } else { format!(" (over the {top}x limit)") }
         );
     }
 

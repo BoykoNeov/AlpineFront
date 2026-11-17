@@ -11,7 +11,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
 
-pub const SPEEDS: [u32; 5] = [1, 2, 4, 8, 16];
+pub const SPEEDS: [u32; 7] = [1, 2, 4, 8, 16, 32, 64];
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum ReplayStatus {
@@ -88,12 +88,13 @@ impl SimLink {
             }
         }
         let previous = sim.soldiers.iter().map(|s| (s.x, s.y)).collect();
+        let top_speed = sim.tuning.time.max_speed;
         Ok(SimLink {
             sim,
             scenario,
             recorder,
             playback,
-            speed: if o.frame_check.is_some() { 16 } else { 1 },
+            speed: if o.frame_check.is_some() { top_speed } else { 1 },
             paused: false,
             accumulator: 0.0,
             previous,

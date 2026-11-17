@@ -183,3 +183,11 @@ What was checked (Claude's work, recorded so it can be revisited):
   12 m deep
 - [Smithsonian: Climbing the Via Ferrata](https://www.smithsonianmag.com/travel/climbing-the-via-ferrata-8081616/)
   — the "about 90 feet lower" claim, now withdrawn
+
+## 2026-11-17 — Step 2: game speed
+
+At 16×, the top speed through step 1, one game week takes about 10½ real hours to play.
+
+| # | Topic | Chosen | Rejected | Why |
+| --- | --- | --- | --- | --- |
+| 29 | Speeding up quiet stretches | Normal speeds up to 64×, plus a skip-ahead that runs as fast as the computer can until dawn or until something happens, slowing on events. The speed check holds 64× to its limit; the skip-ahead's speed is reported for information | One high top speed of a few hundred × with no skip (the speed check would first need the occasional slow update while squads plan routes fixed); keeping 16× and adding only the skip (nothing between watching and jumping) | 64× lets a quiet night pass in about 10 minutes while still watchable; the skip-ahead jumps dead hours without making every update meet a much tighter limit. Replaces decision 17's step-1 bar. The skip-ahead is built with the dawn orders screen, which brings the game clock and the events it stops on |

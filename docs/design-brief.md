@@ -52,7 +52,7 @@ That makes verification tooling part of the first milestone, not a later extra:
 | Target hardware | Strong gaming PC as the minimum: 8 cores, 32 GB memory, RTX 3070 class graphics | Headroom for soldier count and terrain; a speed pass after every build step keeps it honest |
 | Player seat, first | Company commander on one position, 150 to 250 men | Exercises every mechanic on a small map |
 | Player seat, later | Sector commander with several battalions | Same simulation, player moved up the chain |
-| Time | Continuous, with pause and acceleration; auto-slows on events | A company's life runs from seconds to weeks |
+| Time | Continuous, with pause and speeds up to 64×, plus a skip-ahead that runs as fast as the computer can until dawn or until something happens; auto-slows on events | A company's life runs from seconds to weeks: 64× lets a quiet night pass in about 10 minutes while still watchable, and the skip-ahead jumps the dead hours |
 | Core loop | Continuous time plus a daily orders moment at dawn (optionally dusk): work roster, night patrols, standing instructions, requests to headquarters, with "same as yesterday" defaults. Building projects run for days in the background | Gives quiet weeks real choices and matches how a company was run |
 | Campaign | One company, one position, a season or a full year | Combat sits inside survival, engineering and supply |
 | Scenarios | Standalone set pieces, historical or invented | For example the mining of the Col di Lana summit |
@@ -176,8 +176,9 @@ room for an RTX 3070 class card. These margins are estimates, not measurements o
 hardware.
 
 - **Simulation check.** Measured with the simulation running in real time at the fastest game speed
-  the player can select, which is 16× in step 1 and is raised in step 2 when quiet weeks need
-  fast-forwarding. The report also states how much faster than real time the simulation could run.
+  the player can select, which was 16× in step 1 and is 64× from step 2 (decision 29). The
+  skip-ahead, which runs as fast as the computer can, is not held to a limit. The report states how
+  much faster than real time the simulation could run, which is how fast the skip-ahead goes.
 - **Frame check.** 30 frames per second on an RTX 3070. The development PC's RTX 5090 is taken as
   about three times faster (an estimate from public benchmarks), so 99% of frames must finish within
   11 ms here, measured at 2560×1440 with vsync off while the camera flies over the terrain. The
