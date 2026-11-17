@@ -289,5 +289,6 @@ revisited):
   editing the diary does not break them. Old replays without one still load.
 - **The "what this man can see" shading** is worked out again whenever the spotting distance changes
   by more than 5%, so it follows the light through dusk and dawn.
-- **The speed pass** now measures the step-2 game (Monday from first light, every squad moving), and
-  reports how long the skip-ahead takes from dusk to first light.
+- **The speed pass** now measures the step-2 game at noon on Monday (full daylight, where men see
+  furthest and sight work is heaviest; every squad moving), and reports how long the skip-ahead
+  takes from dusk to first light.

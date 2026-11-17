@@ -2,8 +2,8 @@
 //!
 //! 1. Restricts this process (and the game it launches) to 8 logical processors on 4 physical cores,
 //!    two per core, read from Windows' own description of the CPU.
-//! 2. Simulation check: runs the step-2 scenario from Monday's dawn with every squad moving and
-//!    times every update.
+//! 2. Simulation check: runs the step-2 scenario from noon on Monday (full daylight, the heaviest
+//!    sight work) with every squad moving and times every update.
 //!    At the fastest game speed, the updates falling in each 1/60 s of real time (one frame) must
 //!    together use no more than half of it (decision 30). Single slow updates are reported.
 //! 3. Frame check, once per view: launches the game at 2560x1440 with vsync off, flies the camera
@@ -259,7 +259,14 @@ fn main() {
 
     // Simulation check, at the top game speed in real time, as the game runs it.
     let (diary, _) = Weather::load_march_1916().expect("weather diary");
-    let step2 = || scenario::step2(terrain.clone(), tuning.clone(), 1916, pool.clone(), true, diary.clone()).expect("step 2");
+    // Full daylight (noon on Monday), where men see furthest and line-of-sight work is heaviest.
+    let step2 = || {
+        let mut sim = scenario::step1(terrain.clone(), tuning.clone(), 1916, pool.clone(), true);
+        let mut cal = scenario::step2_calendar(&terrain, &tuning).expect("calendar");
+        cal.start = sky::DateTime::parse(&format!("{} 12:00", tuning.scenario.step2_first_day)).expect("noon").to_seconds();
+        sim.set_clock(cal, diary.clone());
+        sim
+    };
     let mut sim = step2();
     let n = sim.soldiers.len();
     let ticks = (SIM_CHECK_MINUTES * 60.0 * tps) as u64;

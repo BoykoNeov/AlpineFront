@@ -78,10 +78,11 @@ planning pause went from 1 to 4 game seconds and the check moved to judging each
 within 2.4 ms); 99% of drawn frames within 8.8 ms in both views. Run flat out, the simulation goes
 about 1,080x faster than real time.
 
-Step 2, with the calendar and the light model (2026-11-17): passed. The busiest frame's simulation
-work was 3.5 ms against an 8.3 ms limit (99% within 2.4 ms); 99% of drawn frames within 8.6 to 8.7 ms
-in both views. Run flat out the simulation goes about 1,050x faster than real time; the skip-ahead
-crosses a night, dusk to first light (11.6 game hours), in about 17 s.
+Step 2, with the calendar and the light model (2026-11-17): passed, measured at noon (full
+daylight, the heaviest sight work). The busiest frame's simulation work was 3.2 ms against an 8.3 ms
+limit (99% within 2.5 ms); 99% of drawn frames within 8.7 ms in both views. Run flat out the
+simulation goes about 905x faster than real time; the skip-ahead crosses a night, dusk to first
+light (11.6 game hours), in about 16 s.
 
 `ALPINE_CLICK_CHECK=1 target\release\alpine_front.exe --view map` (or `--view terrain`) checks that a
 view can be played: it carries on at the dawn orders screen, clicks a squad, orders it, on the map also zooms with the wheel, moves the
