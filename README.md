@@ -44,8 +44,8 @@ It restricts itself to 8 threads on 4 cores, times the simulation at the top gam
 game to time its frames, and ends in a plain-language report. Leave the game window in front while
 it runs: graphics drivers slow down background windows, and the check then reports "not measured".
 
-Step 1 result (2026-11-17): passed. Slowest simulation update 3.0 ms against a 3.1 ms limit (typical
-0.12 ms); 99% of frames within 8.6 ms against an 11 ms limit.
+Step 1 result (2026-11-17): passed in three runs. Slowest simulation update 1.7 to 3.0 ms against a
+3.1 ms limit (typical 0.12 ms); 99% of frames within 8.6 ms against an 11 ms limit.
 
 ## Elevation data
 

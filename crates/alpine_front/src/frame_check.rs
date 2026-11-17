@@ -79,7 +79,7 @@ fn percentiles(v: &[f32]) -> (f32, f32, f32) {
 fn run_check(
     time: Res<Time>,
     options: Res<Options>,
-    link: Res<SimLink>,
+    mut link: ResMut<SimLink>,
     window: Single<&Window>,
     mut record: ResMut<FrameRecord>,
     mut camera: Single<&mut Transform, With<Camera3d>>,
@@ -113,6 +113,22 @@ fn run_check(
             link.tick_ms,
             link.tick_ms_worst
         );
+        // For testing the game's replay saving: ALPINE_SAVE_REPLAY=1 saves the session, as F5 does.
+        if std::env::var("ALPINE_SAVE_REPLAY").is_ok() && link.recorder.is_some() {
+            match link.save_replay() {
+                Ok(path) => println!("REPLAY-SAVED {}", path.display()),
+                Err(e) => println!("REPLAY-SAVE-FAILED {e}"),
+            }
+        }
+        if let Some(p) = &link.playback {
+            println!(
+                "REPLAY {} status={:?} at tick {} of {}",
+                p.file.display(),
+                p.status,
+                link.sim.tick,
+                p.end_tick
+            );
+        }
         exit.write(AppExit::Success);
     }
 }

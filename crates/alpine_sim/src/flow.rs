@@ -1,6 +1,6 @@
-//! Flow fields: for one destination, the walking time from every grid point, so any number of men
-//! heading for the same place share one calculation (Dijkstra's shortest-path method run backwards
-//! from the destination). Walking time per edge uses the walking-speed rule in the tuning file, so
+//! Flow fields: for one destination, the walking time from every grid point that matters (Dijkstra's
+//! shortest-path method run backwards from the destination). Every man in a squad follows the same
+//! field; the simulation works one out per squad, covering only the area around its men and their way. Walking time per edge uses the walking-speed rule in the tuning file, so
 //! routes bend around steep ground on their own.
 
 use crate::terrain::{NEIGHBOURS, Terrain};

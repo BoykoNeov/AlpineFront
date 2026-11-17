@@ -103,14 +103,14 @@ fn main() {
     let checking = options.frame_check.is_some();
     let window = Window {
         title: "Alpine Front - Col di Lana (build step 1)".into(),
-        // The frame check uses exactly 2560x1440 pixels whatever the desktop scaling, and presents
-        // frames as soon as they are ready so nothing caps the frame rate.
+        // The frame check uses exactly 2560x1440 pixels whatever the desktop scaling, with vsync off
+        // (falling back to vsync where the machine cannot turn it off).
         resolution: if checking {
             WindowResolution::new(2560, 1440).with_scale_factor_override(1.0)
         } else {
             (1600, 900).into()
         },
-        present_mode: if checking { PresentMode::Immediate } else { PresentMode::AutoVsync },
+        present_mode: if checking { PresentMode::AutoNoVsync } else { PresentMode::AutoVsync },
         ..default()
     };
 

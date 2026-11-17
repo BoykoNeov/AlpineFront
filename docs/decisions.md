@@ -74,6 +74,9 @@ Technical choices made while building step 1 (Claude's call, recorded so they ca
   at 119 per second (and at 60 when the game window was behind another), whatever the game did.
   The check now also reports work per frame (about 1.2 ms on the processor and 0.3 ms on the
   graphics card in step 1), and says "not measured" rather than failing when a cap is to blame.
+  Known weakness: the processor figure covers only the game's main thread, not Bevy's drawing
+  thread or the driver, so a slowdown there could show as "not measured" instead of a failure.
+  Treat "not measured" as "run again with the window in front", never as a pass.
 - **Camera.** Bevy's built-in free camera uses the right mouse button to grab the mouse, which
   clashes with right-click orders, so the game has its own: right-drag looks, right-click orders.
 
