@@ -170,14 +170,17 @@ All of these are intended; none is designed in detail yet.
 Each step ends in something the director can run and judge.
 
 After every step comes a speed pass on the development PC, the only test machine. With the
-simulation limited to 8 of the PC's 16 threads, placed two to a core on 4 cores, each update must
-use no more than half the time it has, and each frame must finish well inside a limit sized to leave
+simulation limited to 8 of the PC's 16 threads, placed two to a core on 4 cores, the simulation
+updates run during each frame must use no more than half that frame's time (decision 30), and each
+frame must finish well inside a limit sized to leave
 room for an RTX 3070 class card. These margins are estimates, not measurements on real target
 hardware.
 
 - **Simulation check.** Measured with the simulation running in real time at the fastest game speed
-  the player can select, which was 16× in step 1 and is 64× from step 2 (decision 29). The
-  skip-ahead, which runs as fast as the computer can, is not held to a limit. The report states how
+  the player can select, which was 16× in step 1 and is 64× from step 2 (decision 29). It is
+  judged per frame at 60 frames per second: the updates falling in each 1/60 s of real time must
+  take no more than 8.3 ms together. Single slow updates are reported but do not fail on their own
+  (decision 30). The skip-ahead, which runs as fast as the computer can, is not held to a limit. The report states how
   much faster than real time the simulation could run, which is how fast the skip-ahead goes.
 - **Frame check.** 30 frames per second on an RTX 3070. The development PC's RTX 5090 is taken as
   about three times faster (an estimate from public benchmarks), so 99% of frames must finish within

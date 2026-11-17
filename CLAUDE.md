@@ -23,7 +23,8 @@ review code.
   rendering dependency. Bevy only draws a snapshot. Every test runs twice and the results must match
   exactly.
 - After every build step, run the speed pass described in the brief's Build order section (8 of 16
-  threads pinned two to a core on 4 cores; each update uses at most half its time).
+  threads pinned two to a core on 4 cores; the simulation work in each frame uses at most half the
+  frame's time).
 - Follow the build order. Nothing starts until the step before it is playable. Step 2 is
   deliberately crude.
 - Explain decisions to the director in plain language, with options, pros and cons, and a

@@ -48,6 +48,11 @@ pub struct SimLink {
     pub tick_ms: f32,
     pub tick_ms_worst: f32,
     worst_window: Vec<f32>,
+    /// Share of each frame's time spent running the simulation (smoothed), and the worst share in
+    /// the last 60 frames. The speed check's limit is half (decision 30).
+    pub frame_share: f32,
+    pub frame_share_worst: f32,
+    share_window: Vec<f32>,
     pub last_message: Option<String>,
 }
 
@@ -102,6 +107,9 @@ impl SimLink {
             tick_ms: 0.0,
             tick_ms_worst: 0.0,
             worst_window: Vec::new(),
+            frame_share: 0.0,
+            frame_share_worst: 0.0,
+            share_window: Vec::new(),
             last_message: None,
         })
     }
@@ -165,6 +173,7 @@ fn advance_simulation(time: Res<Time>, mut link: ResMut<SimLink>) {
     // the game slows down rather than freezing.
     let max_ticks = ((speed / 30.0 / dt).ceil() as u32).max(2);
     let mut ran = 0;
+    let mut frame_sim_ms = 0.0;
     while link.accumulator >= dt && ran < max_ticks {
         let link = &mut *link;
         link.previous.clear();
@@ -172,6 +181,7 @@ fn advance_simulation(time: Res<Time>, mut link: ResMut<SimLink>) {
         let start = Instant::now();
         link.sim.step();
         let ms = start.elapsed().as_secs_f32() * 1000.0;
+        frame_sim_ms += ms;
         link.tick_ms = if link.tick_ms == 0.0 { ms } else { link.tick_ms * 0.95 + ms * 0.05 };
         link.worst_window.push(ms);
         if let Some(rec) = link.recorder.as_mut() {
@@ -201,5 +211,15 @@ fn advance_simulation(time: Res<Time>, mut link: ResMut<SimLink>) {
         link.worst_window.drain(..excess);
     }
     link.tick_ms_worst = link.worst_window.iter().copied().fold(0.0, f32::max);
+    let frame_ms = time.delta_secs() * 1000.0;
+    if frame_ms > 0.0 {
+        let share = frame_sim_ms / frame_ms;
+        link.frame_share = link.frame_share * 0.95 + share * 0.05;
+        link.share_window.push(share);
+        if link.share_window.len() > 60 {
+            link.share_window.remove(0);
+        }
+        link.frame_share_worst = link.share_window.iter().copied().fold(0.0, f32::max);
+    }
     link.alpha = (link.accumulator / dt).clamp(0.0, 1.0) as f32;
 }

@@ -59,9 +59,11 @@ Step 1 result (2026-11-17): passed in three runs. Slowest simulation update 1.7 
 With the map (2026-11-17): passed. Slowest simulation update 1.4 ms; 99% of frames within 8.6 ms in
 both the 3D view and the map.
 
-At 64x, the top speed from step 2 (2026-11-17): FAILED on the simulation, frames passed. 11 of
-18,000 updates went over the 0.78 ms limit, the slowest by 40 ms, all waiting for a squad's route;
-the fix is the next piece of work.
+At 64x, the top speed from step 2 (2026-11-17): passed in two runs, after the squad leader's
+planning pause went from 1 to 4 game seconds and the check moved to judging each 1/60 s frame
+(decision 30). The busiest frame's simulation work was 5.1 to 7.6 ms against an 8.3 ms limit (99%
+within 2.4 ms); 99% of drawn frames within 8.8 ms in both views. Run flat out, the simulation goes
+about 1,080x faster than real time.
 
 `ALPINE_CLICK_CHECK=1 target\release\alpine_front.exe --view map` (or `--view terrain`) checks that a
 view can be played: it clicks a squad, orders it, on the map also zooms with the wheel, moves the

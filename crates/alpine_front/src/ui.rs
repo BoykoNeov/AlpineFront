@@ -154,13 +154,12 @@ fn panels(
                 }
             }
             ui.separator();
-            let budget = 1000.0 / (link.sim.tuning.time.ticks_per_second as f32 * link.max_speed() as f32) / 2.0;
             ui.label(format!(
-                "Simulation update {:.2} ms (worst {:.2}); limit at {}x: {:.2} ms",
+                "Simulation {:.0}% of each frame (worst {:.0}%; limit 50%); update {:.2} ms (worst {:.2})",
+                link.frame_share * 100.0,
+                link.frame_share_worst * 100.0,
                 link.tick_ms,
                 link.tick_ms_worst,
-                link.max_speed(),
-                budget
             ));
             ui.separator();
             ui.label(format!("{fps:.0} fps, {frame_ms:.1} ms per frame"));

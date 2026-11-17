@@ -3,7 +3,8 @@
 //! 1. Restricts this process (and the game it launches) to 8 logical processors on 4 physical cores,
 //!    two per core, read from Windows' own description of the CPU.
 //! 2. Simulation check: runs the step-1 scenario with every squad moving and times every update.
-//!    At the fastest game speed each update must use no more than half the time it has.
+//!    At the fastest game speed, the updates falling in each 1/60 s of real time (one frame) must
+//!    together use no more than half of it (decision 30). Single slow updates are reported.
 //! 3. Frame check, once per view: launches the game at 2560x1440 with vsync off, flies the camera
 //!    over the 3D terrain (then pans and zooms the 2D map) and reads back its frame times. In each
 //!    view 99% of frames must finish within 11 ms (30 fps on an RTX 3070, taken as about a third of
@@ -28,6 +29,8 @@ use windows_sys::Win32::System::Threading::{GetCurrentProcess, GetProcessAffinit
 const FRAME_LIMIT_MS: f32 = 11.0;
 const FRAME_CHECK_SECONDS: u32 = 60;
 const SIM_CHECK_MINUTES: f64 = 30.0;
+/// The simulation check groups updates into frames of this length (60 frames per second).
+const SIM_FRAME_MS: f64 = 1000.0 / 60.0;
 
 /// Physical cores and the logical processors (as an affinity mask, processor group 0) on each.
 fn cores() -> Result<Vec<u64>, String> {
@@ -110,12 +113,18 @@ struct Timing {
     p999: f64,
     max: f64,
     over: usize,
+    /// Per frame of SIM_FRAME_MS, only when paced: the updates' total time.
+    frame_p99: f64,
+    frame_max: f64,
+    frames_over: usize,
+    frames: usize,
 }
 
 /// Times `ticks` updates. With `pace_ms`, each update starts on its own schedule, as in the game at
 /// that speed (worker threads get the real time between updates); otherwise they run back to back.
 fn time_ticks(sim: &mut alpine_sim::sim::Sim, ticks: u64, budget_ms: f64, pace_ms: Option<f64>) -> Timing {
     let mut t = Vec::with_capacity(ticks as usize);
+    let mut frame_sums: Vec<f64> = Vec::new();
     let begin = Instant::now();
     for i in 0..ticks {
         if let Some(p) = pace_ms {
@@ -134,13 +143,39 @@ fn time_ticks(sim: &mut alpine_sim::sim::Sim, ticks: u64, budget_ms: f64, pace_m
         }
         let s = Instant::now();
         sim.step();
-        t.push(s.elapsed().as_secs_f64() * 1000.0);
+        let ms = s.elapsed().as_secs_f64() * 1000.0;
+        t.push(ms);
+        if let Some(p) = pace_ms {
+            let f = (i as f64 * p / SIM_FRAME_MS) as usize;
+            if frame_sums.len() <= f {
+                frame_sums.resize(f + 1, 0.0);
+            }
+            frame_sums[f] += ms;
+        }
     }
     let mean = t.iter().sum::<f64>() / t.len() as f64;
     let over = t.iter().filter(|&&x| x > budget_ms).count();
     t.sort_by(f64::total_cmp);
     let pct = |p: f64| t[((t.len() - 1) as f64 * p).round() as usize];
-    Timing { ticks: t.len(), mean, p50: pct(0.5), p99: pct(0.99), p999: pct(0.999), max: t[t.len() - 1], over }
+    let frames_over = frame_sums.iter().filter(|&&x| x > SIM_FRAME_MS / 2.0).count();
+    frame_sums.sort_by(f64::total_cmp);
+    let (frame_p99, frame_max) = match frame_sums.len() {
+        0 => (0.0, 0.0),
+        n => (frame_sums[((n - 1) as f64 * 0.99).round() as usize], frame_sums[n - 1]),
+    };
+    Timing {
+        ticks: t.len(),
+        mean,
+        p50: pct(0.5),
+        p99: pct(0.99),
+        p999: pct(0.999),
+        max: t[t.len() - 1],
+        over,
+        frame_p99,
+        frame_max,
+        frames_over,
+        frames: frame_sums.len(),
+    }
 }
 
 fn frame_check(view: &str, top: f64) -> Result<(FrameVerdict, String), String> {
@@ -223,14 +258,21 @@ fn main() {
     let n = sim.soldiers.len();
     let ticks = (SIM_CHECK_MINUTES * 60.0 * tps) as u64;
     let t = time_ticks(&mut sim, ticks, budget, Some(per_tick_ms));
-    let sim_pass = t.over == 0;
+    let sim_pass = t.frames_over == 0;
     println!();
     println!(
         "{} Simulation: {n} soldiers, every squad moving on random orders, {SIM_CHECK_MINUTES} game minutes ({} updates) \
-         run at {top}x speed in real time on {threads} threads. Each update has {per_tick_ms:.2} ms, so the limit is {budget:.2} ms. \
-         Typical update {:.3} ms, 99% within {:.3} ms, 99.9% within {:.3} ms, slowest {:.3} ms; {} updates over the limit.",
+         run at {top}x speed in real time on {threads} threads. Judged per frame of 1/60 s: the updates in each frame may \
+         use at most {:.2} ms together. Of {} frames, 99% used within {:.2} ms, the busiest {:.2} ms; {} frames over the limit. \
+         Single updates, for information: each has {per_tick_ms:.2} ms; typical {:.3} ms, 99% within {:.3} ms, \
+         99.9% within {:.3} ms, slowest {:.3} ms; {} took more than half their time ({budget:.2} ms).",
         if sim_pass { "PASS" } else { "FAIL" },
         t.ticks,
+        SIM_FRAME_MS / 2.0,
+        t.frames,
+        t.frame_p99,
+        t.frame_max,
+        t.frames_over,
         t.p50,
         t.p99,
         t.p999,

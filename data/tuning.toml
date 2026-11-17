@@ -30,8 +30,9 @@ men_per_squad = 10
 formation_spacing_m = 2.5
 # A man counts as arrived when this close to his place in the formation.
 arrival_radius_m = 0.3
-# How long a squad leader takes to work out a route after receiving an order.
-order_delay_s = 1.0
+# How long a squad leader takes to work out a route after receiving an order. The route is
+# computed in the background meanwhile; at 64x, 4 s gives it about 60 ms of real time (decision 30).
+order_delay_s = 4.0
 
 [soldier]
 # Men try to keep at least this far from each other while moving.
