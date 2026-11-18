@@ -113,8 +113,9 @@ impl SimLink {
             }
             None => {
                 let terrain = Arc::new(Terrain::load_col_di_lana(tuning.walking.steepest_walkable_deg)?);
-                let auto = o.autoplay || o.frame_check.is_some();
-                let name = match (o.step1, auto) {
+                // The frame check plays the game as the player does, on the work roster (decision
+                // 44); only --autoplay sets every squad wandering on random orders.
+                let name = match (o.step1, o.autoplay) {
                     (true, true) => scenario::STEP1_AUTOPLAY,
                     (true, false) => scenario::STEP1,
                     (false, true) => scenario::STEP2_AUTOPLAY,

@@ -2,16 +2,21 @@
 //!
 //! 1. Restricts this process (and the game it launches) to 8 logical processors on 4 physical cores,
 //!    two per core, read from Windows' own description of the CPU.
-//! 2. Simulation check: runs the step-2 scenario from noon on Monday (full daylight, the heaviest
-//!    sight work) with every squad moving and times every update.
-//!    At the fastest game speed, the updates falling in each 1/60 s of real time (one frame) must
-//!    together use no more than half of it (decision 30). Single slow updates are reported.
-//! 3. Frame check, once per view: launches the game at 2560x1440 with vsync off, flies the camera
-//!    over the 3D terrain (then pans and zooms the 2D map) and reads back its frame times. In each
-//!    view 99% of frames must finish within 11 ms (30 fps on an RTX 3070, taken as about a third of
-//!    the RTX 5090's speed).
-//! 4. For information only: how long the skip-ahead takes from dusk to dawn, and how the simulation
-//!    copes with 1,000, 3,000 and 5,000 soldiers.
+//! 2. Simulation check, two runs, both of which must pass (decision 44):
+//!    - the heaviest load: the step-2 scenario from noon on Monday (full daylight, the heaviest
+//!      sight work) with every squad moving on random orders;
+//!    - the game as played: the work roster across Monday's dusk, when every rostered squad changes
+//!      over at once and plans its walk to its new place.
+//!
+//!    Each times every update at the fastest game speed in real time: the updates falling in each
+//!    1/60 s of real time (one frame) must together use no more than half of it (decision 30).
+//!    Single slow updates are reported.
+//! 3. Frame check, once per view: launches the game (the work roster, as played) at 2560x1440 with
+//!    vsync off, flies the camera over the 3D terrain (then pans and zooms the 2D map) and reads back
+//!    its frame times. In each view 99% of frames must finish within 11 ms (30 fps on an RTX 3070,
+//!    taken as about a third of the RTX 5090's speed).
+//! 4. For information only: how long the skip-ahead takes from dusk to dawn on the work roster, and
+//!    how the simulation copes with 1,000, 3,000 and 5,000 soldiers.
 //!
 //! Build everything in release mode first, then run:
 //!   cargo build --release --workspace
@@ -35,6 +40,8 @@ const FRAME_CHECK_SECONDS: u32 = 60;
 const SIM_CHECK_MINUTES: f64 = 30.0;
 /// The simulation check groups updates into frames of this length (60 frames per second).
 const SIM_FRAME_MS: f64 = 1000.0 / 60.0;
+/// The roster run starts this many game minutes before dusk, so the changeover falls inside it.
+const DUSK_LEAD_MINUTES: f64 = 15.0;
 
 /// Physical cores and the logical processors (as an affinity mask, processor group 0) on each.
 fn cores() -> Result<Vec<u64>, String> {
@@ -122,6 +129,10 @@ struct Timing {
     frame_max: f64,
     frames_over: usize,
     frames: usize,
+    /// The frame in which dusk fell, if it did.
+    dusk_frame: Option<usize>,
+    /// Each frame's total, in order (only when paced).
+    frame_series: Vec<f64>,
 }
 
 /// Times `ticks` updates. With `pace_ms`, each update starts on its own schedule, as in the game at
@@ -129,6 +140,7 @@ struct Timing {
 fn time_ticks(sim: &mut alpine_sim::sim::Sim, ticks: u64, budget_ms: f64, pace_ms: Option<f64>) -> Timing {
     let mut t = Vec::with_capacity(ticks as usize);
     let mut frame_sums: Vec<f64> = Vec::new();
+    let mut dusk_frame = None;
     let begin = Instant::now();
     for i in 0..ticks {
         if let Some(p) = pace_ms {
@@ -155,6 +167,9 @@ fn time_ticks(sim: &mut alpine_sim::sim::Sim, ticks: u64, budget_ms: f64, pace_m
                 frame_sums.resize(f + 1, 0.0);
             }
             frame_sums[f] += ms;
+            if dusk_frame.is_none() && sim.events.iter().any(|e| matches!(e, alpine_sim::sim::Event::Dusk)) {
+                dusk_frame = Some(f);
+            }
         }
     }
     let mean = t.iter().sum::<f64>() / t.len() as f64;
@@ -162,6 +177,7 @@ fn time_ticks(sim: &mut alpine_sim::sim::Sim, ticks: u64, budget_ms: f64, pace_m
     t.sort_by(f64::total_cmp);
     let pct = |p: f64| t[((t.len() - 1) as f64 * p).round() as usize];
     let frames_over = frame_sums.iter().filter(|&&x| x > SIM_FRAME_MS / 2.0).count();
+    let frame_series = frame_sums.clone();
     frame_sums.sort_by(f64::total_cmp);
     let (frame_p99, frame_max) = match frame_sums.len() {
         0 => (0.0, 0.0),
@@ -179,6 +195,8 @@ fn time_ticks(sim: &mut alpine_sim::sim::Sim, ticks: u64, budget_ms: f64, pace_m
         frame_max,
         frames_over,
         frames: frame_sums.len(),
+        dusk_frame,
+        frame_series,
     }
 }
 
@@ -259,7 +277,9 @@ fn main() {
 
     // Simulation check, at the top game speed in real time, as the game runs it.
     let (diary, _) = Weather::load_march_1916().expect("weather diary");
-    // Full daylight (noon on Monday), where men see furthest and line-of-sight work is heaviest.
+    let places_toml = alpine_sim::roster::load_col_di_lana_1916_text().expect("places file");
+    // Run 1, the heaviest load: full daylight (noon on Monday), where men see furthest and
+    // line-of-sight work is heaviest, with every squad moving on random orders.
     let step2 = || {
         let mut sim = scenario::step1(terrain.clone(), tuning.clone(), 1916, pool.clone(), true);
         let mut cal = scenario::step2_calendar(&terrain, &tuning).expect("calendar");
@@ -267,19 +287,33 @@ fn main() {
         sim.set_clock(cal, diary.clone());
         sim
     };
+    // Run 2 and the skip-ahead, the game as played: the work roster (decisions 39 to 43), starting
+    // `before_s` game seconds before dusk on Monday. The squads stand at their day places; at dusk
+    // every rostered squad changes over at once.
+    let roster_game = |before_s: f64| -> (Sim, String) {
+        let mut sim = scenario::step2(terrain.clone(), tuning.clone(), 1916, pool.clone(), false, diary.clone(), &places_toml)
+            .expect("step 2 with the roster");
+        let mut cal = scenario::step2_calendar(&terrain, &tuning).expect("calendar");
+        let dusk = cal.next_set(cal.start + 5.0 * 3600.0, 12.0, sky::DUSK_ALTITUDE_DEG, |t| cal.sun_altitude(t)).expect("dusk");
+        cal.start = dusk - before_s;
+        let at = format!("{} (dusk {})", cal.now(0.0).hhmm(), cal.now(before_s).hhmm());
+        sim.set_clock(cal, diary.clone());
+        (sim, at)
+    };
+    let ticks = (SIM_CHECK_MINUTES * 60.0 * tps) as u64;
     let mut sim = step2();
     let n = sim.soldiers.len();
-    let ticks = (SIM_CHECK_MINUTES * 60.0 * tps) as u64;
     let t = time_ticks(&mut sim, ticks, budget, Some(per_tick_ms));
-    let sim_pass = t.frames_over == 0;
+    let wander_pass = t.frames_over == 0;
     println!();
     println!(
-        "{} Simulation: {n} soldiers, every squad moving on random orders, {SIM_CHECK_MINUTES} game minutes ({} updates) \
-         run at {top}x speed in real time on {threads} threads. Judged per frame of 1/60 s: the updates in each frame may \
-         use at most {:.2} ms together. Of {} frames, 99% used within {:.2} ms, the busiest {:.2} ms; {} frames over the limit. \
-         Single updates, for information: each has {per_tick_ms:.2} ms; typical {:.3} ms, 99% within {:.3} ms, \
-         99.9% within {:.3} ms, slowest {:.3} ms; {} took more than half their time ({budget:.2} ms).",
-        if sim_pass { "PASS" } else { "FAIL" },
+        "{} Simulation, heaviest load: {n} soldiers, every squad moving on random orders, from noon on Monday, \
+         {SIM_CHECK_MINUTES} game minutes ({} updates) run at {top}x speed in real time on {threads} threads. Judged per \
+         frame of 1/60 s: the updates in each frame may use at most {:.2} ms together. Of {} frames, 99% used within \
+         {:.2} ms, the busiest {:.2} ms; {} frames over the limit. Single updates, for information: each has \
+         {per_tick_ms:.2} ms; typical {:.3} ms, 99% within {:.3} ms, 99.9% within {:.3} ms, slowest {:.3} ms; {} took \
+         more than half their time ({budget:.2} ms).",
+        if wander_pass { "PASS" } else { "FAIL" },
         t.ticks,
         SIM_FRAME_MS / 2.0,
         t.frames,
@@ -306,19 +340,46 @@ fn main() {
         h.over
     );
 
-    // The skip-ahead through Monday night, for information.
+    // Run 2: the roster game across dusk.
+    let (mut sim, at) = roster_game(DUSK_LEAD_MINUTES * 60.0);
+    let t = time_ticks(&mut sim, ticks, budget, Some(per_tick_ms));
+    let roster_pass = t.frames_over == 0 && t.dusk_frame.is_some();
+    // The busiest frame in the two game minutes after dusk, while the squads plan their walks.
+    let after_dusk = t.dusk_frame.map(|f| {
+        let span = (120.0 * 1000.0 / top / SIM_FRAME_MS).ceil() as usize;
+        t.frame_series[f..(f + span).min(t.frame_series.len())].iter().copied().fold(0.0, f64::max)
+    });
+    println!();
+    println!(
+        "{} Simulation, the game as played: the work roster, from {at} on Monday, {SIM_CHECK_MINUTES} game minutes run at \
+         {top}x speed in real time. Of {} frames, 99% used within {:.2} ms, the busiest {:.2} ms; {} frames over the \
+         {:.2} ms limit. {} Single updates, for information: typical {:.3} ms, slowest {:.3} ms.",
+        if roster_pass { "PASS" } else { "FAIL" },
+        t.frames,
+        t.frame_p99,
+        t.frame_max,
+        t.frames_over,
+        SIM_FRAME_MS / 2.0,
+        match after_dusk {
+            Some(ms) => format!(
+                "At dusk every rostered squad changed over at once; the busiest frame in the two game minutes after \
+                 was {ms:.2} ms."
+            ),
+            None => "Dusk did not fall during the run, so the changeover was not measured (this counts as a fail).".into(),
+        },
+        t.p50,
+        t.max,
+    );
+    let sim_pass = wander_pass && roster_pass;
+
+    // The skip-ahead through Monday night on the roster, for information.
     {
-        let mut cal = scenario::step2_calendar(&terrain, &tuning).expect("calendar");
-        let noon = cal.start + 5.0 * 3600.0;
-        cal.start = cal.next_set(noon, 12.0, sky::DUSK_ALTITUDE_DEG, |t| cal.sun_altitude(t)).expect("dusk");
-        let mut sim: Sim = scenario::step1(terrain.clone(), tuning.clone(), 1916, pool.clone(), false);
-        sim.set_clock(cal, diary.clone());
+        let (mut sim, at) = roster_game(60.0);
         let start = Instant::now();
         let stop = sim.skip(|s| s.tick < (16.0 * 3600.0 * tps) as u64, |_| {});
         let secs = start.elapsed().as_secs_f64();
         println!(
-            "     Skip-ahead, for information: from dusk on Monday ({}) it stopped at {} on {}, {:.1} game hours in {secs:.1} s.",
-            cal.now(0.0).hhmm(),
+            "     Skip-ahead on the roster, for information: from {at} on Monday it stopped at {} on {}, {:.1} game hours in {secs:.1} s.",
             sim.now().unwrap().hhmm(),
             match stop.as_deref() {
                 Some([alpine_sim::sim::Event::Dawn { .. }, ..]) => "dawn".to_string(),

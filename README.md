@@ -95,8 +95,17 @@ light (11.6 game hours), in about 16 s.
 Step 2, with the work roster (2026-11-17): passed. The busiest frame's simulation work was 2.7 ms
 against an 8.3 ms limit (99% within 2.4 ms); 99% of drawn frames within 8.8 ms in both views. Run
 flat out the simulation goes about 960x faster than real time; the skip-ahead crosses a night in
-about 15 s. (The check still runs every squad wandering on random orders, without the roster, so
-the roster's own work and the place names in the 3D view are not measured yet.)
+about 15 s. (The check still ran every squad wandering on random orders, without the roster, so
+the roster's own work and the place names in the 3D view were not measured; fixed below.)
+
+The roster measured too (2026-11-18, decision 44): passed. The simulation check now has two runs
+and both must pass. Every squad moving on random orders at noon: busiest frame 4.3 ms against
+8.3 ms (99% within 2.4 ms). The game as played, on the roster across Monday's dusk, when every
+squad changes over at once: busiest frame 4.2 ms (99% within 1.2 ms; 1.8 ms at most in the two
+game minutes after dusk). The frame check now plays the roster game with the place names drawn
+(resting men are in their shelters and not drawn): 99% of frames within 8.6 ms in both views. Run
+flat out the simulation goes about 990x faster than real time; the skip-ahead on the roster crosses
+Monday night, dusk to first light, in about 15 s.
 
 `ALPINE_CLICK_CHECK=1 target\release\alpine_front.exe --view map` (or `--view terrain`) checks that a
 view can be played: it carries on at the dawn orders screen, moves in close to the summit (where the

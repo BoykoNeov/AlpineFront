@@ -1,6 +1,8 @@
 //! Speed-pass frame check (`--frame-check SECONDS`): flies the camera over the map at top game speed
 //! with vsync off, records every frame, prints a summary line and exits. With `--view map` it pans
-//! and zooms the 2D map instead, through both the squad flags and the individual men.
+//! and zooms the 2D map instead, through both the squad flags and the individual men. The game is
+//! the one the player plays, on the work roster (decision 44), with the place names drawn; men
+//! resting in shelters are not drawn.
 //!
 //! Three measures, because graphics drivers often cap the frame rate (for example 119 fps on a
 //! 120 Hz screen, or 60 fps when the window is in the background), which hides how much work a

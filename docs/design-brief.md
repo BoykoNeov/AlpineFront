@@ -183,6 +183,9 @@ hardware.
   take no more than 8.3 ms together. Single slow updates are reported but do not fail on their own
   (decision 30). The skip-ahead, which runs as fast as the computer can, is not held to a limit. The report states how
   much faster than real time the simulation could run, which is how fast the skip-ahead goes.
+  Since the work roster there are two runs, and both must pass: the heaviest load (every squad
+  moving on random orders at noon) and the game as played (the roster across Monday's dusk, when
+  every squad changes over at once). The frame check plays the roster game (decision 44).
 - **Frame check.** 30 frames per second on an RTX 3070. The development PC's RTX 5090 is taken as
   about three times faster (an estimate from public benchmarks), so 99% of frames must finish within
   11 ms here, measured at 2560×1440 with vsync off while the camera flies over the terrain. The

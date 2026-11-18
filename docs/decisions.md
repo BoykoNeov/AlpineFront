@@ -333,3 +333,9 @@ shelters), and the data file says so.
 **Found on the way, for the night raid:** in early 1916 the Italian front trench lay only tens of
 metres below the summit (their mine gallery was about 50 m long, its head halfway between the two
 wire belts), while the game's Italian patrols stay more than 1 km away.
+
+## 2026-11-18 — Speed pass: the work roster is measured too
+
+| # | Topic | Chosen | Rejected | Why |
+| --- | --- | --- | --- | --- |
+| 44 | What the speed pass runs now the game has a work roster | The simulation check has two runs, and both must pass: the heaviest load (every squad moving on random orders at noon, as before) and the game as played (the work roster from 15 game minutes before Monday's dusk, so every rostered squad changes over at once inside the run; the busiest frame just after dusk is reported). The frame check plays the roster game, so the place names are drawn and measured; resting men are inside shelters and not drawn. The skip-ahead figure is taken on the roster too | Replacing the random-orders run with the roster game (at noon on the roster most men stand still or sleep, so the check would get easier and miss the heaviest load); giving the random-orders game the places so their names are drawn (that switches tiredness on in it and changes its replays) | The step-2 roster result said plainly that the roster and the place names were not measured. The changeover at dusk and dawn, when about ten squads plan walks in the same moment, is the roster's own busiest moment and has to fall inside the run |
