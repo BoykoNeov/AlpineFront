@@ -78,3 +78,24 @@ Places are the lookout posts and shelters in `data/places/col_di_lana_1916.toml`
 | 27 | **Orders beat the roster.** A squad sent elsewhere leaves its duty, stays where it was sent, and takes up its duty again at the next dusk or dawn, or when "Back to duty" is pressed. |
 | 28 | **Same as yesterday.** Pressing "Carry on" without touching the roster gives the same duties as the day before. |
 | 29 | **Replays and old tests.** Roster choices are saved in replays and play back exactly. Tests 1 to 21 still pass. |
+
+## Step 2: carrying parties, cold and hunger (approved 2026-11-18)
+
+The dump on Monte Sief and the summit store, food and fuel, cold, frostbite and hunger (decisions
+46 to 51). Tuning numbers live in `data/supply.toml`; the week's temperatures are in the weather
+diary. Tests 1 to 29 run without the supply file, so cold and hunger are off for them; the report
+also says, for information, how the checks of tests 22 to 28 come out with cold and hunger on
+(decision 53). Cold does not shorten how far a man spots by itself; it tires him (decision 52).
+
+| # | Expectation |
+| --- | --- |
+| 30 | **Carrying delivers.** A squad on carry duty by day makes its first delivery within 2 game hours, and the store rises by its ten men's loads. |
+| 31 | **The store has a limit.** The store never holds more than 3 days of either supply. A carrying squad with nothing left to fetch goes back to its shelter to rest. |
+| 32 | **Doing nothing.** With the first morning's roster and nobody carrying, food and fuel both run out between dawn on Thursday and dawn on Friday. Nobody is frostbitten or dies before dusk on Thursday. |
+| 33 | **A cold night is survivable.** On the week's coldest night the night guards end very cold but nobody is frostbitten. After the morning in a heated shelter they are warm again by noon. |
+| 34 | **Neglect costs men.** With no fuel, a squad guarding two nights running suffers frostbite. Starving as well, its first death comes sooner than when it is fed. |
+| 35 | **Hunger tires.** A starving squad tires faster than a fed one doing the same duty. |
+| 36 | **The lost leave.** Frostbitten and dead men leave their squads, and the morning report counts them. |
+| 37 | **Night carrying is slower.** A carrying trip takes longer by night than by day. |
+
+Run them with `cargo test --release -p alpine_sim --test supply`.

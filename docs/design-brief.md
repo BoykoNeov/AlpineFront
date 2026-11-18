@@ -239,8 +239,13 @@ hardware.
      carrying parties; digging waits for building (step 6).
    - Carrying parties and simple cold and hunger are built as one piece (decision 45): the summit's
      stocks run down each day, men go hungry and cold when they run short, and squads on carrying
-     duty bring supplies up, at the cost of not guarding or sleeping. Its details are planned with
-     the director before it is built.
+     duty bring supplies up, at the cost of not guarding or sleeping (decisions 46 to 53). The dump
+     is on the top of Monte Sief, about 600 m along the ridge, as period sources describe; the
+     summit store holds 3 days of food and of fuel. Men grow cold outside and warm up in heated
+     shelters; a cold man walks slower and tires faster, and one left very cold may get frostbite
+     (sent down, lost for the week) or die of exposure. Hunger makes men tire faster, sleep worse
+     and chill faster, but never kills by itself inside the week. The numbers live in
+     `data/supply.toml`; the week's temperatures, invented like its cloud, in the weather diary.
    - The week is Monday 6 to Sunday 12 March 1916 (decision 31): deep snow and hard cold, the
      Italians tunnelling toward the summit since mid-January. On the summit the sun rises at about
      06:40 and sets at about 18:10 (Central European Time, before summer time began that April), so
