@@ -17,7 +17,7 @@ toml = "1.2.1"
 name = "scenarios"
 harness = false
 
-# The locked step-2 tests: calendar, night and the skip-ahead (docs/scenario-tests.md, 12 to 21).
+# The locked step-2 tests: calendar, night and the skip-ahead (docs/scenario-tests.md, 12 to 20).
 # Run with: cargo test --release -p alpine_sim --test step2
 [[test]]
 name = "step2"
@@ -27,4 +27,10 @@ harness = false
 # Run with: cargo test --release -p alpine_sim --test roster
 [[test]]
 name = "roster"
+harness = false
+
+# The locked carrying, cold and hunger tests (docs/scenario-tests.md, 30, 31 and 34 to 37).
+# Run with: cargo test --release -p alpine_sim --test supply
+[[test]]
+name = "supply"
 harness = false

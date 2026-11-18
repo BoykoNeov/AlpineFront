@@ -15,6 +15,7 @@ pub mod scenario;
 pub mod sim;
 pub mod sky;
 pub mod spatial;
+pub mod supply;
 pub mod terrain;
 pub mod tuning;
 pub mod weather;

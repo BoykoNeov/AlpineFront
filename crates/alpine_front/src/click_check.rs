@@ -98,7 +98,7 @@ fn choose(mode: ViewMode, link: &SimLink, map: &MapView, window: &Window, terrai
                     on_screen(mode, link, terrain, map_cam, squad_anchor(link, q.id)?, 0.0)? + FLAG_PICK_OFFSET_PX
                 }
                 _ => {
-                    let lead = q.members[0] as usize;
+                    let lead = *q.members.first()? as usize;
                     let (x, y) = link.drawn_position(lead);
                     let distance = terrain.1.translation().distance(to_world(x, y, sim.terrain.height(x, y)));
                     let lift = if mode == ViewMode::Terrain { 0.8 * marker_scale(distance) } else { 0.0 };

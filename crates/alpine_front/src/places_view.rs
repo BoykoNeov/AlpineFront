@@ -73,8 +73,14 @@ fn spawn_map_marks(
     // A post: a small ring of a dot; a shelter: a small block, as on trench maps.
     let post = meshes.add(Circle::new(3.0));
     let shelter = meshes.add(Rectangle::new(8.0, 5.0));
+    // The dump and the kitchen store: a square.
+    let store = meshes.add(Rectangle::new(7.0, 7.0));
     for (i, p) in sim.places.iter().enumerate() {
-        let mesh = if p.kind == PlaceKind::Post { post.clone() } else { shelter.clone() };
+        let mesh = match p.kind {
+            PlaceKind::Post => post.clone(),
+            PlaceKind::Shelter => shelter.clone(),
+            PlaceKind::Dump | PlaceKind::Store => store.clone(),
+        };
         commands
             .spawn((Transform::from_xyz(p.x, p.y, 4.5), Visibility::Hidden, PlaceMark, map_layer()))
             .with_children(|c| {
@@ -134,6 +140,10 @@ fn draw_terrain_marks(mut gizmos: Gizmos, mode: Res<ViewMode>, settings: Res<Ove
         let corners: Vec<Vec3> = match p.kind {
             PlaceKind::Post => (0..=16).map(|k| k as f32 * std::f32::consts::TAU / 16.0).map(|a| ground(r * a.cos(), r * a.sin())).collect(),
             PlaceKind::Shelter => [(-r, -r), (r, -r), (r, r), (-r, r), (-r, -r)].iter().map(|&(dx, dy)| ground(dx, dy)).collect(),
+            // The dump and the store: a diamond.
+            PlaceKind::Dump | PlaceKind::Store => {
+                [(0.0, -r), (r, 0.0), (0.0, r), (-r, 0.0), (0.0, -r)].iter().map(|&(dx, dy)| ground(dx, dy)).collect()
+            }
         };
         gizmos.linestrip(corners, colour);
         let foot = ground(0.0, 0.0);

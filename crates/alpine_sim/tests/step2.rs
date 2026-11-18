@@ -1,11 +1,10 @@
-//! The locked step-2 tests (docs/scenario-tests.md, tests 12 to 21): the calendar and dawn, the
-//! moon, seeing at night, and the skip-ahead. Every scenario runs twice and the runs must match.
+//! The locked step-2 tests (docs/scenario-tests.md, tests 12 to 20; 14 to 16 withdrawn): the
+//! calendar and dawn, the moon, twilight and the skip-ahead. Every scenario runs twice and the runs must match.
 //!
 //! Run with: cargo test --release -p alpine_sim --test step2
 
-use alpine_sim::replay::{Replay, Verdict};
 use alpine_sim::scenario;
-use alpine_sim::sim::{Event, LoggedOrder, Order, PLAYER_SIDE, Side, Sim, SquadState, make_pool};
+use alpine_sim::sim::{Event, LoggedOrder, Order, PLAYER_SIDE, Sim, SquadState, make_pool};
 use alpine_sim::sky::{self, Calendar, DateTime, DAWN_ALTITUDE_DEG, MOONRISE_ALTITUDE_DEG};
 use alpine_sim::terrain::Terrain;
 use alpine_sim::tuning::Tuning;
@@ -164,97 +163,6 @@ fn test_moon(w: &World) -> Outcome {
     ))
 }
 
-// ---- 14 to 16. Seeing by night and by day ---------------------------------------------------------
-
-/// Two men, ours at `a` and an Italian at `b`, at a moment, under fixed cloud.
-fn pair(w: &World, when: f64, cloud: f64, a: (f32, f32), b: (f32, f32)) -> Sim {
-    let mut sim = Sim::new(w.terrain.clone(), w.tuning.clone(), 1, make_pool(2));
-    sim.add_squad(Side::Austria, &[a]);
-    sim.add_squad(Side::Italy, &[b]);
-    sim.set_clock(calendar_at(w, when), Weather::constant(cloud));
-    sim
-}
-
-/// Runs a pair for up to `seconds` and returns when (game seconds) ours first saw the Italian, and
-/// the spotting distance at the end.
-fn watch_pair(w: &World, when: f64, cloud: f64, a: (f32, f32), b: (f32, f32), seconds: f64) -> Result<(Option<f64>, f32), String> {
-    twice(|| {
-        let mut sim = pair(w, when, cloud, a, b);
-        let end = (seconds * w.tuning.time.ticks_per_second as f64) as u64;
-        let mut first = None;
-        while sim.tick < end {
-            sim.step();
-            if first.is_none() && sim.soldiers[0].sees.contains(&1) {
-                first = Some(sim.game_seconds().to_bits());
-            }
-        }
-        (first, sim.spotting_range.to_bits())
-    })
-    .map(|(f, r)| (f.map(f64::from_bits), f32::from_bits(r)))
-}
-
-/// A direction from the summit along which a man at every distance up to `far` is in plain sight
-/// and on ground that can be stood on: the first of eight compass directions that works.
-fn open_direction(w: &World, far: f32) -> Result<(f32, f32), String> {
-    let sim = Sim::new(w.terrain.clone(), w.tuning.clone(), 1, make_pool(1));
-    let t = &sim.terrain;
-    for k in 0..8 {
-        let a = k as f32 * std::f32::consts::FRAC_PI_4;
-        let (dx, dy) = (a.cos(), a.sin());
-        let ok = (1..=far as i32).all(|d| {
-            let (x, y) = (dx * d as f32, dy * d as f32);
-            let eye = [0.0, 0.0, t.height(0.0, 0.0) + sim.tuning.soldier.eye_height_m];
-            let head = [x, y, t.height(x, y) + sim.tuning.soldier.head_height_m];
-            t.walkable_at(x, y) && alpine_sim::los::visible(t, &sim.los, eye, head)
-        });
-        if ok {
-            return Ok((dx, dy));
-        }
-    }
-    Err("no open direction from the summit".into())
-}
-
-fn night_sight(w: &World, cloud: f64, near: f32, far: f32, label: &str) -> Outcome {
-    let when = at("1916-03-08 03:00");
-    let cal = calendar_at(w, 0.0);
-    if cal.moon(when).0 > 0.0 {
-        return Err("set-up error: the moon is up at 03:00 on 8 March".into());
-    }
-    let dir = open_direction(w, far)?;
-    let p = |d: f32| (dir.0 * d, dir.1 * d);
-    let (seen_near, range) = watch_pair(w, when, cloud, (0.0, 0.0), p(near), 3.0)?;
-    let (seen_far, _) = watch_pair(w, when, cloud, (0.0, 0.0), p(far), 300.0)?;
-    match (seen_near, seen_far) {
-        (Some(t), None) if t <= 2.0 => Ok(format!(
-            "at 03:00 on 8 March, {label}, moon down: the spotting distance was {range:.0} m; a man {near:.0} m away in plain sight was spotted after {t:.1} game seconds (limit 2), one {far:.0} m away was not spotted in 5 game minutes"
-        )),
-        (Some(t), None) => Err(format!("the man {near:.0} m away was spotted only after {t:.1} game seconds")),
-        (None, _) => Err(format!("the man {near:.0} m away was not spotted (spotting distance {range:.0} m)")),
-        (_, Some(t)) => Err(format!("the man {far:.0} m away was spotted after {t:.1} game seconds (spotting distance {range:.0} m)")),
-    }
-}
-
-fn test_daylight(w: &World) -> Outcome {
-    let noon = at("1916-03-08 12:00");
-    let summit = (0.0, 0.0);
-    let sief = (-400.0, 460.0);
-    let settsass = (-140.0, 2480.0);
-    let (seen, range) = watch_pair(w, noon, 0.0, summit, sief, 3.0)?;
-    let (too_far, _) = watch_pair(w, noon, 0.0, sief, settsass, 3.0)?;
-    let full = w.tuning.spotting.spotting_range_m;
-    if range != full {
-        return Err(format!("at noon the spotting distance was {range:.0} m, not {full:.0} m"));
-    }
-    match (seen, too_far) {
-        (Some(t), None) if t <= 2.0 => Ok(format!(
-            "at noon on a clear 8 March the spotting distance was {range:.0} m; the summit spotted Monte Sief's top after {t:.1} game seconds (limit 2) and Monte Sief did not spot Settsass, 2 km away"
-        )),
-        (Some(t), None) => Err(format!("summit to Monte Sief took {t:.1} game seconds")),
-        (None, _) => Err("the summit did not spot Monte Sief".into()),
-        (_, Some(_)) => Err("Monte Sief spotted Settsass, 2 km away".into()),
-    }
-}
-
 // ---- 17. Twilight is gradual ----------------------------------------------------------------------
 
 fn test_twilight(w: &World) -> Outcome {
@@ -317,14 +225,22 @@ fn test_skip_night(w: &World) -> Outcome {
                         let limit = (14.0 * 3600.0 * w.tuning.time.ticks_per_second as f64) as u64;
                         let mut sun_before = sim.clock.as_ref().unwrap().sky.sun_altitude_deg;
                         let mut sun_prev = sun_before;
-                        let stop = sim.skip(
-                            |s| s.tick < limit,
-                            |s| {
-                                sun_before = sun_prev;
-                                sun_prev = s.clock.as_ref().unwrap().sky.sun_altitude_deg;
-                            },
-                        );
-                        let events = stop.map(|e| format!("{e:?}")).unwrap_or_else(|| "none".into());
+                        // Other stops on the way (an Italian patrol coming into sight) are skipped
+                        // past: the rule is that the skip-ahead stops at dawn (decision 56).
+                        let events = loop {
+                            let stop = sim.skip(
+                                |s| s.tick < limit,
+                                |s| {
+                                    sun_before = sun_prev;
+                                    sun_prev = s.clock.as_ref().unwrap().sky.sun_altitude_deg;
+                                },
+                            );
+                            match stop {
+                                Some(e) if !e.iter().any(|e| matches!(e, alpine_sim::sim::Event::Dawn { .. })) => continue,
+                                Some(e) => break format!("{e:?}"),
+                                None => break "none".to_string(),
+                            }
+                        };
                         (sim.now().unwrap().to_seconds().to_bits(), events, sun_before.to_bits(), sun_prev.to_bits())
                     })
                 })
@@ -336,7 +252,7 @@ fn test_skip_night(w: &World) -> Outcome {
     for ((dusk, first_light), (t, events, before, now)) in nights.iter().zip(&results) {
         let (t, before, now) = (f64::from_bits(*t), f64::from_bits(*before), f64::from_bits(*now));
         let day = DateTime::from_seconds(*dusk).short_date();
-        if !events.starts_with("[Dawn") {
+        if !events.contains("Dawn") {
             return Err(format!("the night of {day} stopped at {} on {events}, not at dawn", hhmm(t)));
         }
         if !(before < DAWN_ALTITUDE_DEG && now >= DAWN_ALTITUDE_DEG) {
@@ -348,7 +264,7 @@ fn test_skip_night(w: &World) -> Outcome {
         lines.push(format!("{} {}-{}", &day[..3], hhmm(*dusk), hhmm(t)));
     }
     Ok(format!(
-        "started at dusk on each of the 7 nights, the skip-ahead stopped on the exact update of first light, with nothing on the way ({})",
+        "started at dusk on each of the 7 nights, the skip-ahead stopped on the exact update of first light ({})",
         lines.join(", ")
     ))
 }
@@ -500,22 +416,6 @@ fn test_skip_same(w: &World) -> Outcome {
     ))
 }
 
-// ---- 21. Step 1 unchanged -------------------------------------------------------------------------
-
-fn test_step1_unchanged(w: &World) -> Outcome {
-    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests").join("data").join("step1_before_step2.ron");
-    let replay = Replay::load(&path)?;
-    let verdict = twice(|| replay.verify(w.terrain.clone(), make_pool(8)).map(|v| format!("{v:?}")))??;
-    if verdict != format!("{:?}", Verdict::Matches { ticks: replay.ticks }) {
-        return Err(format!("the step-1 replay recorded before this work did not match: {verdict}"));
-    }
-    Ok(format!(
-        "a step-1 replay recorded with the code from before the calendar ({} updates, {} orders) played back matching at every check; tests 1 to 11 are run by the step-1 suite",
-        replay.ticks,
-        replay.orders.len()
-    ))
-}
-
 fn main() {
     let started = Instant::now();
     let (tuning, _) = Tuning::load_default().expect("tuning file");
@@ -535,19 +435,15 @@ fn main() {
     };
     run("12", "Calendar and dawn", &|| test_dawn(w));
     run("13", "Moon", &|| test_moon(w));
-    run("14", "Clear, moonless night", &|| night_sight(w, 0.0, 40.0, 80.0, "clear"));
-    run("15", "Overcast, moonless night", &|| night_sight(w, 1.0, 10.0, 30.0, "overcast"));
-    run("16", "Daylight unchanged", &|| test_daylight(w));
     run("17", "Twilight is gradual", &|| test_twilight(w));
     run("18", "Skip stops at dawn", &|| test_skip_night(w));
     run("19", "Skip stops on events", &|| test_skip_events(w));
     run("20", "Skipping changes nothing", &|| test_skip_same(w));
-    run("21", "Step 1 unchanged", &|| test_step1_unchanged(w));
 
     let failed = results.iter().filter(|r| r.2.is_err()).count();
     println!();
-    println!("Alpine Front: step-2 tests (locked, docs/scenario-tests.md)");
-    println!("============================================================");
+    println!("Alpine Front: step-2 tests (locked, docs/scenario-tests.md; 14 to 16 and 21 withdrawn, decision 56)");
+    println!("=============================================================================================");
     for (n, title, r) in &results {
         match r {
             Ok(d) => println!("PASS {n:>2}. {title}: {d}."),

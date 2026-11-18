@@ -4,6 +4,7 @@
 use crate::roster::{self, Duty};
 use crate::sim::{DayRecord, Event, PLAYER_SIDE, Sim};
 use crate::sky::{self, DUSK_ALTITUDE_DEG};
+use crate::supply::{Lost, Stock};
 
 pub struct MorningReport {
     /// "Monday 6 March 1916, first light at 06:12; sunrise at 06:42".
@@ -45,13 +46,24 @@ pub fn morning_report(sim: &Sim) -> Option<MorningReport> {
     let mut events = Vec::new();
     let ours: Vec<_> = sim.squads.iter().filter(|q| q.side == PLAYER_SIDE).collect();
     let men: usize = ours.iter().map(|q| q.members.len()).sum();
-    events.push(format!("The company: {men} men in {} squads, all present.", ours.len()));
+    match &sim.supply {
+        Some(sup) if !sup.lost.is_empty() => {
+            let frost = sup.lost.iter().filter(|l| l.why == Lost::Frostbite).count();
+            let dead = sup.lost.len() - frost;
+            events.push(format!(
+                "The company: {men} men in {} squads; lost since the first morning: {frost} sent down with frostbite, {dead} dead.",
+                ours.len()
+            ));
+        }
+        _ => events.push(format!("The company: {men} men in {} squads, all present.", ours.len())),
+    }
 
     let Some((prev_i, prev_tick, _)) = previous else {
         events.push(
             "The first morning on the summit of Col di Lana. The Italians have been tunnelling toward it since mid-January."
                 .into(),
         );
+        supply_lines(sim, None, &mut events);
         roster_lines(sim, &mut events);
         return Some(MorningReport { title, weather, events });
     };
@@ -114,6 +126,7 @@ pub fn morning_report(sim: &Sim) -> Option<MorningReport> {
         let line = c.next().map(|f| f.to_uppercase().collect::<String>() + c.as_str()).unwrap_or_default();
         events.push(format!("{line}."));
     }
+    supply_lines(sim, Some(prev_tick), &mut events);
     roster_lines(sim, &mut events);
     Some(MorningReport { title, weather, events })
 }
@@ -140,12 +153,12 @@ fn roster_lines(sim: &Sim, events: &mut Vec<String>) {
         return;
     }
     // What they did, grouped by hours on guard and asleep (to the nearest hour).
-    let mut groups: Vec<((u32, u32), Vec<u32>)> = Vec::new();
+    let mut groups: Vec<((u32, u32, u32), Vec<u32>)> = Vec::new();
     let mut sent = Vec::new();
     for q in &ours {
         let Some(d) = q.yesterday else { continue };
-        let DayRecord { guard_minutes, sleep_minutes, sent_away } = d;
-        let key = ((guard_minutes + 30) / 60, (sleep_minutes + 30) / 60);
+        let DayRecord { guard_minutes, sleep_minutes, sent_away, carry_minutes } = d;
+        let key = ((guard_minutes + 30) / 60, (sleep_minutes + 30) / 60, (carry_minutes + 30) / 60);
         match groups.iter_mut().find(|g| g.0 == key) {
             Some(g) => g.1.push(q.id),
             None => groups.push((key, vec![q.id])),
@@ -154,12 +167,13 @@ fn roster_lines(sim: &Sim, events: &mut Vec<String>) {
             sent.push(q.id);
         }
     }
-    for ((g, sl), ids) in &groups {
+    for ((g, sl, c), ids) in &groups {
         let mut s = squad_list(ids);
         if let Some(f) = s.get_mut(0..1) {
             f.make_ascii_uppercase();
         }
-        events.push(format!("{s}: {} on guard, {} asleep.", hours(g * 60), hours(sl * 60)));
+        let carrying = if *c > 0 { format!(", {} carrying", hours(c * 60)) } else { String::new() };
+        events.push(format!("{s}: {} on guard, {} asleep{carrying}.", hours(g * 60), hours(sl * 60)));
     }
     if !sent.is_empty() {
         events.push(format!("Sent away from their duty by you: {}.", squad_list(&sent)));
@@ -189,10 +203,84 @@ fn roster_lines(sim: &Sim, events: &mut Vec<String>) {
     events.push(format!("{line}."));
 
     let n = |f: &dyn Fn(Duty, Duty) -> bool| ours.iter().filter(|q| q.roster.is_some_and(|r| f(r.day, r.night))).count();
+    let carry = if sim.supply.is_some() {
+        format!(
+            ", {} carrying by day, {} by night",
+            count(n(&|d, _| d == Duty::Carry)),
+            count(n(&|_, nt| nt == Duty::Carry))
+        )
+    } else {
+        String::new()
+    };
     events.push(format!(
-        "The roster, same as yesterday unless you change it: {} on guard by day, {} by night, {} resting all day and night.",
+        "The roster, same as yesterday unless you change it: {} on guard by day, {} by night, {} resting all day and night{carry}.",
         count(n(&|d, _| d == Duty::Guard)),
         count(n(&|_, nt| nt == Duty::Guard)),
         count(n(&|d, nt| d == Duty::Rest && nt == Duty::Rest)),
+    ));
+}
+
+/// "2.5 days" / "1 day" / "none".
+fn days(d: f32) -> String {
+    if d < 0.05 {
+        "none".to_string()
+    } else if (d - 1.0).abs() < 0.05 {
+        "1 day".to_string()
+    } else {
+        format!("{d:.1} days")
+    }
+}
+
+/// Carrying, cold and hunger's part of the report (decisions 45 to 53): the stores, what was
+/// carried, meals missed, men lost since the previous dawn, and how cold and hungry the men are.
+fn supply_lines(sim: &Sim, since_tick: Option<u64>, events: &mut Vec<String>) {
+    let Some(sup) = &sim.supply else { return };
+    events.push(format!(
+        "The store (it holds {}): food for {}, fuel for {}.",
+        days(sup.tuning.stocks.store_days),
+        days(sup.days_left(Stock::Food)),
+        days(sup.days_left(Stock::Fuel))
+    ));
+    if since_tick.is_some() {
+        let c = sup.carried_yesterday.unwrap_or([0.0; 2]);
+        if c[0] + c[1] > 0.0 {
+            events.push(format!("Carried up from the {}: {:.0} kg of food and {:.0} kg of fuel.", sim.places[sup.dump].name, c[0], c[1]));
+        } else {
+            events.push("Nothing was carried up.".into());
+        }
+        match sup.missed_meals_yesterday.unwrap_or(0) {
+            0 => {}
+            1 => events.push("At one meal there was not enough food for every man.".into()),
+            n => events.push(format!("At {n} meals there was not enough food for every man.")),
+        }
+        if sup.fuel_kg <= 0.0 {
+            events.push("There is no fuel: the shelters are not heated, and the men cannot warm up in them.".into());
+        }
+    }
+    if let Some(from) = since_tick {
+        let recent: Vec<_> = sup.lost.iter().filter(|l| l.tick > from).collect();
+        for (why, words) in [(Lost::Frostbite, "sent down with frostbite"), (Lost::Died, "died of the cold")] {
+            let mut ids: Vec<u32> = recent.iter().filter(|l| l.why == why).map(|l| l.squad).collect();
+            if ids.is_empty() {
+                continue;
+            }
+            let n = ids.len();
+            ids.sort_unstable();
+            ids.dedup();
+            events.push(format!("{n} {} {words} ({}).", if n == 1 { "man" } else { "men" }, squad_list(&ids)));
+        }
+    }
+    // How cold and hungry the men are now, man by man.
+    let ct = &sup.tuning.cold;
+    let ht = &sup.tuning.hunger;
+    let ours: Vec<u32> = sim.squads.iter().filter(|q| q.side == PLAYER_SIDE).flat_map(|q| q.members.iter().copied()).collect();
+    let tally = |f: &dyn Fn(u32) -> &'static str, words: [&str; 3]| -> String {
+        let n: Vec<usize> = words.iter().map(|w| ours.iter().filter(|&&m| f(m) == *w).count()).collect();
+        format!("{} {}, {} {}, {} {}", n[0], words[0], n[1], words[1], n[2], words[2])
+    };
+    events.push(format!(
+        "The men now: {}; {}.",
+        tally(&|m| ct.word(sim.soldiers[m as usize].chill), ["warm", "cold", "very cold"]),
+        tally(&|m| ht.word(sim.soldiers[m as usize].minutes_since_meal), ["fed", "hungry", "starving"])
     ));
 }

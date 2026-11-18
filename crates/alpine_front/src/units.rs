@@ -99,7 +99,7 @@ fn place_units(
         let i = m.0 as usize;
         let s = &sim.soldiers[i];
         // Men inside a shelter are out of sight (decision 39).
-        let inside = sim.squads[s.squad as usize].inside;
+        let inside = sim.squads[s.squad as usize].inside || s.gone.is_some();
         vis.set_if_neq(if inside { Visibility::Hidden } else { Visibility::Inherited });
         if inside {
             continue;

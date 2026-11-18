@@ -477,7 +477,7 @@ fn place_men(
     for (m, mut tf, mut vis, mut mat) in &mut q {
         let i = m.0 as usize;
         let s = &sim.soldiers[i];
-        if sim.squads[s.squad as usize].inside {
+        if sim.squads[s.squad as usize].inside || s.gone.is_some() {
             vis.set_if_neq(Visibility::Hidden);
             continue;
         }
@@ -508,10 +508,16 @@ fn place_flags(
             vis.set_if_neq(Visibility::Hidden);
             continue;
         }
-        if let Some((x, y)) = squad_anchor(&link, f.0) {
-            tf.translation.x = x;
-            tf.translation.y = y;
-            vis.set_if_neq(Visibility::Visible);
+        match squad_anchor(&link, f.0) {
+            Some((x, y)) => {
+                tf.translation.x = x;
+                tf.translation.y = y;
+                vis.set_if_neq(Visibility::Visible);
+            }
+            // A squad whose men are all lost has no flag.
+            None => {
+                vis.set_if_neq(Visibility::Hidden);
+            }
         }
     }
     if !show {

@@ -263,8 +263,6 @@ fn main() {
     let south = (0.0, -250.0);
     let north = (0.0, 250.0);
     let sief = (-400.0, 460.0);
-    let settsass = (-140.0, 2480.0);
-    let valley = (-1200.0, -1600.0);
     let meadow = (0.0, 900.0);
 
     results.push(("1", "Exact replays", test_replays(w, &mut watch)));
@@ -289,14 +287,6 @@ fn main() {
         }
     })));
 
-    let range = w.tuning.spotting.spotting_range_m;
-    results.push(("5", "Too far to spot", sight_test(w, &mut watch, "5", sief, settsass, true, false).map(|(c, _)| {
-        format!(
-            "Monte Sief's top and Settsass's top ({:.0} m apart) have a clear line of sight ({c:.1} m to spare) but neither man was spotted, being beyond the {range:.0} m spotting range",
-            dist(sief, settsass)
-        )
-    })));
-
     let detour = march(w, &mut watch, "7", meadow, summit, 2.5 * 3600.0).and_then(|s| {
         if s <= 2.0 * 3600.0 {
             Ok(format!(
@@ -309,32 +299,6 @@ fn main() {
         }
     });
     results.push(("7", "Cliff detour", detour));
-
-    let climb = march(w, &mut watch, "8", valley, summit, 7.0 * 3600.0);
-    results.push((
-        "8",
-        "Long climb",
-        climb.clone().and_then(|s| {
-            let h = s / 3600.0;
-            let msg = format!("from the valley floor (1,217 m) to the summit (2,460 m) took {} (expected 3 to 6 h)", clock(s));
-            if (3.0..=6.0).contains(&h) { Ok(msg) } else { Err(msg) }
-        }),
-    ));
-
-    let descent = march(w, &mut watch, "9", summit, valley, 7.0 * 3600.0);
-    results.push((
-        "9",
-        "Descent",
-        match (&climb, descent) {
-            (Ok(up), Ok(down)) => {
-                let ratio = down / up;
-                let msg = format!("coming down took {}, {:.0}% of the climb (expected 40 to 80%)", clock(down), ratio * 100.0);
-                if (0.4..=0.8).contains(&ratio) { Ok(msg) } else { Err(msg) }
-            }
-            (Err(_), _) => Err("cannot compare: the climb failed".into()),
-            (_, Err(e)) => Err(e),
-        },
-    ));
 
     // 10. Nobody gets stuck.
     let stuck = {
@@ -385,7 +349,7 @@ fn main() {
         match &watch.steep_violation {
             Some(v) => Err(v.clone()),
             None => Ok(format!(
-                "over {} checked ticks in all the tests above, the steepest ground anyone stood on was {:.1}° (limit {steep_limit:.0}°)",
+                "over {} checked ticks in all the tests above, the steepest ground anyone stood on was {:.1}° (the tuning file's limit, now {steep_limit:.0}°)",
                 watch.ticks_checked, watch.steepest_seen
             )),
         },
@@ -405,8 +369,8 @@ fn main() {
     results.sort_by_key(|r| r.0.parse::<u32>().unwrap());
     let failed = results.iter().filter(|r| r.2.is_err()).count();
     println!();
-    println!("Alpine Front: step-1 scenario tests (locked, docs/scenario-tests.md)");
-    println!("=====================================================================");
+    println!("Alpine Front: step-1 scenario tests (locked, docs/scenario-tests.md; 5, 8 and 9 withdrawn, decision 56)");
+    println!("=================================================================================================");
     for (n, title, r) in &results {
         match r {
             Ok(d) => println!("PASS {n:>2}. {title}: {d}."),

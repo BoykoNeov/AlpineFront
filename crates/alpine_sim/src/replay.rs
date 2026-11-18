@@ -12,9 +12,10 @@ use std::path::Path;
 use std::sync::Arc;
 
 /// 2: the replay records which ground it was played on (`terrain`).
-/// 3: step 2 has the work roster, and the replay keeps the places file (`places_toml`). Format-2
-/// step-1 replays still play (step 1 did not change); format-2 step-2 replays are refused.
-pub const FORMAT: u32 = 3;
+/// 3: step 2 has the work roster, and the replay keeps the places file (`places_toml`).
+/// 4: step 2 has carrying, cold and hunger, and the replay keeps the supply file (`supply_toml`).
+/// Older step-1 replays still play (step 1 did not change); older step-2 replays are refused.
+pub const FORMAT: u32 = 4;
 /// A checksum is recorded every this many ticks.
 pub const CHECK_EVERY: u64 = 10;
 
@@ -36,6 +37,10 @@ pub struct Replay {
     /// The places file's text at the time of recording (step 2 on, from format 3; empty otherwise).
     #[serde(default)]
     pub places_toml: String,
+    /// The supply file's text at the time of recording (the step-2 game, from format 4; empty
+    /// otherwise, which means no carrying, cold or hunger).
+    #[serde(default)]
+    pub supply_toml: String,
     /// How many ticks were recorded.
     pub ticks: u64,
     pub orders: Vec<LoggedOrder>,
@@ -60,11 +65,18 @@ impl Recorder {
                 tuning_toml: tuning_toml.to_string(),
                 weather_toml: weather_toml.to_string(),
                 places_toml: places_toml.to_string(),
+                supply_toml: String::new(),
                 ticks: 0,
                 orders: Vec::new(),
                 checksums: Vec::new(),
             },
         }
+    }
+
+    /// Records the supply file the game was started with (the step-2 game).
+    pub fn with_supply(mut self, supply_toml: &str) -> Self {
+        self.replay.supply_toml = supply_toml.to_string();
+        self
     }
 
     /// Call after every `Sim::step`.
@@ -100,11 +112,11 @@ impl Replay {
     pub fn load(path: &Path) -> Result<Replay, String> {
         let text = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
         let r: Replay = ron::from_str(&text).map_err(|e| format!("{}: {e}", path.display()))?;
-        let old_step1 = r.format == 2 && (r.scenario == scenario::STEP1 || r.scenario == scenario::STEP1_AUTOPLAY);
+        let old_step1 = (2..FORMAT).contains(&r.format) && (r.scenario == scenario::STEP1 || r.scenario == scenario::STEP1_AUTOPLAY);
         if r.format != FORMAT && !old_step1 {
             return Err(format!(
                 "replay format {} not supported (expected {FORMAT}); replays saved before the map or game changed cannot be played \
-                 (step-2 replays from before the work roster included)",
+                 (step-2 replays from before the work roster, or from before carrying, cold and hunger, included)",
                 r.format
             ));
         }
@@ -117,7 +129,16 @@ impl Replay {
             return Err("this replay was recorded on different ground (the map has changed since), so it cannot be played back".to_string());
         }
         let tuning = Tuning::from_toml(&self.tuning_toml)?;
-        let mut sim = scenario::build(&self.scenario, terrain, tuning, self.seed, pool, &self.weather_toml, &self.places_toml)?;
+        let mut sim = scenario::build(
+            &self.scenario,
+            terrain,
+            tuning,
+            self.seed,
+            pool,
+            &self.weather_toml,
+            &self.places_toml,
+            &self.supply_toml,
+        )?;
         for o in &self.orders {
             sim.schedule(o.clone());
         }

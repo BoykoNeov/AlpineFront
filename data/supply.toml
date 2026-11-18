@@ -1,0 +1,100 @@
+# Carrying parties, cold and hunger (decisions 45 to 51). Used by the step-2 game; the locked tests
+# 1 to 29 run without this file, so cold and hunger are off for them.
+#
+# WHAT IS HISTORICAL AND WHAT IS NOT. Period accounts say men reached the summit along the ridge path
+# from Monte Sief, and that a cableway ran from the Sief's top to the summit, its cable hit by Italian
+# shells again and again (sources in docs/decisions.md under decision 46). The cableway counts as out
+# of action this week, so men carry. A cavern on the summit served as the kitchen; its spot, like
+# every other spot here, was read from the terrain by Claude. Every number below is Claude's
+# estimate: no source found gives rations, fuel or loads.
+#
+# Places are in metres from the summit (x east, y north). Safe to edit; replays keep a copy of the
+# file they were recorded with.
+
+# ---- Where supplies are fetched and kept ---------------------------------------------------------
+
+# The supply dump on the top of Monte Sief. It never runs out this week (how supplies reach it from
+# the valleys behind is not modelled).
+[dump]
+name = "Sief dump"
+x = -400.0
+y = 460.0
+squads = 2
+source = "the cableway's top station on Monte Sief and the ridge path: period accounts; spot: the Sief's top"
+
+# The summit store, beside the kitchen cavern, where carrying parties unload.
+[store]
+name = "Kitchen cavern"
+x = 20.0
+y = 62.0
+squads = 2
+source = "a cavern used as the kitchen: period accounts; spot read from the terrain by Claude"
+
+# ---- Stocks -----------------------------------------------------------------------------------------
+
+[stocks]
+# What a man uses in a day. Food is eaten at the morning and evening meals (half each, at dawn and
+# dusk); fuel (firewood and coal) burns through the day, heating the shelters, cooking and melting
+# snow for water.
+food_kg_per_man_day = 1.0
+fuel_kg_per_man_day = 2.0
+# The summit store holds this many days of each, for the men on the summit at the start. The game
+# opens with both full.
+store_days = 3.0
+
+# ---- Carrying -------------------------------------------------------------------------------------
+
+[carrying]
+# What each man carries up per trip.
+load_kg = 20.0
+# Minutes to load at the dump, and to unload at the store.
+loading_minutes = 10.0
+unloading_minutes = 10.0
+# A loaded man walks at this share of his speed; any carrier walks at this share at night, in the dark.
+laden_walking_factor = 0.75
+night_walking_factor = 0.8
+# A carrier tires this many times as fast as a guard.
+tiring_factor = 1.5
+
+# ---- Cold -----------------------------------------------------------------------------------------
+
+[cold]
+# How cold a man is runs from 0 (warm) to 1 (the worst). Outside, a man standing still grows colder
+# by this much per hour for each degree below zero; one walking or carrying by this share of it.
+# At -16 C a night on a post (about 11.6 hours) takes a warm man to about 0.75: very cold, unharmed.
+per_degree_hour = 0.004
+moving_factor = 0.5
+# In a heated shelter (the store has fuel) he warms by this much per hour. In a shelter without fuel
+# he neither warms nor grows colder.
+warming_per_hour = 0.15
+# Words for the report: cold from here, very cold from here.
+cold_from = 0.3
+very_cold_from = 0.6
+# At the worst cold (in between, in proportion) a man walks at this share of his speed, stiff and
+# numb; tiredness and cold do not add up there, the worse of the two counts. He also tires this many
+# times as fast, his body spending its strength keeping warm. Cold does not shorten how far he
+# spots by itself; the tiredness it brings does (decision 52).
+worst_walking_factor = 0.7
+worst_tiring_factor = 1.5
+# Frostbite, for a man outside: from this coldness on, his chance of it each hour rises from the first
+# figure to the second at the worst cold. A frostbitten man is sent down the mountain, lost for the week.
+frostbite_from = 0.9
+frostbite_chance_per_hour_from = 0.005
+frostbite_chance_per_hour_worst = 0.02
+# Death from exposure, for a man outside: after this many hours at the worst cold, this chance each hour.
+death_after_hours_at_worst = 3.0
+death_chance_per_hour = 0.005
+
+# ---- Hunger ---------------------------------------------------------------------------------------
+
+[hunger]
+# Hours since his last meal before a man counts as hungry, and before he is starving.
+hungry_after_hours = 12.0
+starving_after_hours = 72.0
+# A starving man (in proportion for a hungry one) tires this many times as fast, recovers in his sleep
+# at this share of the usual rate, grows cold this many times as fast and warms at this share of the
+# usual rate. Hunger never kills by itself inside the week: it kills by making the cold deadlier.
+tiring_factor = 1.5
+sleep_factor = 0.5
+chilling_factor = 1.5
+warming_factor = 0.5

@@ -3,6 +3,7 @@
 use crate::roster::{self, Duty, Roster};
 use crate::sim::{Event, LoggedEvent, PatrolZone, Side, Sim};
 use crate::sky::{Calendar, DateTime};
+use crate::supply::SupplyFile;
 use crate::terrain::Terrain;
 use crate::tuning::Tuning;
 use crate::weather::Weather;
@@ -23,8 +24,11 @@ pub fn uses_weather(name: &str) -> bool {
     name == STEP2 || name == STEP2_AUTOPLAY
 }
 
-/// Builds a named scenario. `weather_toml` is the weather diary's text and `places_toml` the
-/// lookout posts and shelters (both ignored by step 1).
+/// Builds a named scenario. `weather_toml` is the weather diary's text, `places_toml` the lookout
+/// posts and shelters, and `supply_toml` the supply file (carrying, cold and hunger; decisions 45
+/// to 53). Step 1 ignores all three; the step-2 game without autoplay uses the supply file when it
+/// is not empty (the locked tests 1 to 29 pass it empty).
+#[allow(clippy::too_many_arguments)] // a scenario is its seed, its threads and its data files
 pub fn build(
     name: &str,
     terrain: Arc<Terrain>,
@@ -33,13 +37,19 @@ pub fn build(
     pool: Arc<rayon::ThreadPool>,
     weather_toml: &str,
     places_toml: &str,
+    supply_toml: &str,
 ) -> Result<Sim, String> {
     match name {
         STEP1 => Ok(step1(terrain, tuning, seed, pool, false)),
         STEP1_AUTOPLAY => Ok(step1(terrain, tuning, seed, pool, true)),
         STEP2 | STEP2_AUTOPLAY => {
             let weather = Weather::from_toml(weather_toml)?;
-            step2(terrain, tuning, seed, pool, name == STEP2_AUTOPLAY, weather, places_toml)
+            let autoplay = name == STEP2_AUTOPLAY;
+            let mut sim = step2(terrain, tuning, seed, pool, autoplay, weather, places_toml)?;
+            if !autoplay && !supply_toml.trim().is_empty() {
+                sim.start_supply(SupplyFile::from_toml(supply_toml)?)?;
+            }
+            Ok(sim)
         }
         _ => Err(format!("unknown scenario '{name}'")),
     }

@@ -23,7 +23,8 @@
 //!   target\release\speedpass.exe
 
 use alpine_sim::scenario;
-use alpine_sim::sim::{Sim, make_pool};
+use alpine_sim::roster::{Duty, Roster};
+use alpine_sim::sim::{Order, Sim, make_pool};
 use alpine_sim::sky;
 use alpine_sim::weather::Weather;
 use alpine_sim::terrain::Terrain;
@@ -278,6 +279,7 @@ fn main() {
     // Simulation check, at the top game speed in real time, as the game runs it.
     let (diary, _) = Weather::load_march_1916().expect("weather diary");
     let places_toml = alpine_sim::roster::load_col_di_lana_1916_text().expect("places file");
+    let supply_toml = alpine_sim::supply::load_text().expect("supply file");
     // Run 1, the heaviest load: full daylight (noon on Monday), where men see furthest and
     // line-of-sight work is heaviest, with every squad moving on random orders.
     let step2 = || {
@@ -298,6 +300,16 @@ fn main() {
         cal.start = dusk - before_s;
         let at = format!("{} (dusk {})", cal.now(0.0).hhmm(), cal.now(before_s).hhmm());
         sim.set_clock(cal, diary.clone());
+        // With carrying parties, cold and hunger on, as played, and one squad carrying around the
+        // clock to a half-empty store, so the carrying walks are in the load too.
+        sim.start_supply(alpine_sim::supply::SupplyFile::from_toml(&supply_toml).expect("supply file")).expect("supply places");
+        let sup = sim.supply.as_mut().expect("supply");
+        sup.food_kg = sup.food_cap_kg * 0.5;
+        sup.fuel_kg = sup.fuel_cap_kg * 0.5;
+        let resting = Roster { day: Duty::Rest, night: Duty::Rest };
+        if let Some(q) = sim.squads.iter().find(|q| q.roster == Some(resting)).map(|q| q.id) {
+            sim.order(Order::SetRoster { squad: q, day: Duty::Carry, night: Duty::Carry });
+        }
         (sim, at)
     };
     let ticks = (SIM_CHECK_MINUTES * 60.0 * tps) as u64;

@@ -19,6 +19,9 @@ review code.
 - Scenario-test expectations: Claude drafts them, the director approves them, then they are locked.
   Never change an approved expectation without asking. Tuning numbers live in readable data files,
   and every test run ends in a plain-language report.
+- Write lasting tests only for things not expected to change (decision 56): the basic rules, not
+  this week's numbers or behaviour a later step will replace. Those are checked by hand while they
+  are being built, and judged by playing.
 - The simulation is plain Rust with a fixed run order and seeded randomness, and has no Bevy or
   rendering dependency. Bevy only draws a snapshot. Every test runs twice and the results must match
   exactly.

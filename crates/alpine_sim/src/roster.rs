@@ -12,6 +12,9 @@ pub enum Duty {
     Guard,
     /// Sleep in a shelter, out of sight both ways.
     Rest,
+    /// Carry supplies from the dump to the summit store, trip after trip (decision 49; games with
+    /// the supply file only).
+    Carry,
 }
 
 impl Duty {
@@ -19,14 +22,16 @@ impl Duty {
         match self {
             Duty::Guard => "guard",
             Duty::Rest => "rest",
+            Duty::Carry => "carry",
         }
     }
 
-    /// The kind of place the duty is done at.
+    /// The kind of place the duty is done at (carrying starts at the dump).
     pub fn place_kind(self) -> PlaceKind {
         match self {
             Duty::Guard => PlaceKind::Post,
             Duty::Rest => PlaceKind::Shelter,
+            Duty::Carry => PlaceKind::Dump,
         }
     }
 }
@@ -49,6 +54,10 @@ impl Roster {
 pub enum PlaceKind {
     Post,
     Shelter,
+    /// Where carrying parties fetch supplies (from the supply file).
+    Dump,
+    /// Where carrying parties unload them on the summit (from the supply file).
+    Store,
 }
 
 /// A lookout post or a shelter.
@@ -96,7 +105,7 @@ struct PlaceEntry {
 /// Squads at the same place stand at least this far apart (a squad in formation is about 8 m across).
 const SPOT_SPACING_M: f32 = 12.0;
 /// Spare spots worked out around each place, where the ground allows.
-const EXTRA_SPOTS_PER_PLACE: usize = 2;
+pub const EXTRA_SPOTS_PER_PLACE: usize = 2;
 
 /// Reads the places file and works out each squad's spot on the ground: around the place's own
 /// point, on ground that can be stood on, reachable in a straight line from it, and clear of every
@@ -104,13 +113,7 @@ const EXTRA_SPOTS_PER_PLACE: usize = 2;
 /// regular spot.
 pub fn places_from_toml(text: &str, terrain: &Terrain) -> Result<Vec<Place>, String> {
     let file: PlaceFile = toml::from_str(text).map_err(|e| format!("places file: {e}"))?;
-    let mut offsets = Vec::new();
-    for j in -4i32..=4 {
-        for i in -4i32..=4 {
-            offsets.push((i, j));
-        }
-    }
-    offsets.sort_by_key(|&(i, j)| (i * i + j * j, j, i));
+    let offsets = spot_offsets();
     let mut taken: Vec<(f32, f32)> = Vec::new();
     let mut places = Vec::new();
     for e in file.place {
@@ -148,6 +151,23 @@ fn find_spots(terrain: &Terrain, offsets: &[(i32, i32)], taken: &mut Vec<(f32, f
         }
     }
     spots
+}
+
+/// Up to `n` spots around `centre`, as `places_from_toml` works them out, clear of every spot
+/// already `taken` (which they join).
+pub fn find_spots_around(terrain: &Terrain, taken: &mut Vec<(f32, f32)>, centre: (f32, f32), n: usize) -> Vec<(f32, f32)> {
+    find_spots(terrain, &spot_offsets(), taken, centre, n)
+}
+
+fn spot_offsets() -> Vec<(i32, i32)> {
+    let mut offsets = Vec::new();
+    for j in -4i32..=4 {
+        for i in -4i32..=4 {
+            offsets.push((i, j));
+        }
+    }
+    offsets.sort_by_key(|&(i, j)| (i * i + j * j, j, i));
+    offsets
 }
 
 /// `data/places/col_di_lana_1916.toml`'s text.

@@ -126,8 +126,11 @@ impl SimLink {
                 } else {
                     (String::new(), String::new())
                 };
-                let rec = Recorder::new(name, o.seed, terrain.fingerprint(), &tuning_toml, &weather_toml, &places_toml);
-                let sim = scenario::build(name, terrain, tuning, o.seed, pool, &weather_toml, &places_toml)?;
+                // Carrying parties, cold and hunger: in the game as played, not in --autoplay.
+                let supply_toml = if name == scenario::STEP2 { alpine_sim::supply::load_text()? } else { String::new() };
+                let rec = Recorder::new(name, o.seed, terrain.fingerprint(), &tuning_toml, &weather_toml, &places_toml)
+                    .with_supply(&supply_toml);
+                let sim = scenario::build(name, terrain, tuning, o.seed, pool, &weather_toml, &places_toml, &supply_toml)?;
                 (sim, name.to_string(), Some(rec), None)
             }
         };

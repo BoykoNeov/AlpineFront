@@ -10,6 +10,7 @@ use crate::units::Selection;
 use crate::view::ViewMode;
 use alpine_sim::report::morning_report;
 use alpine_sim::roster::{self, Duty, PlaceKind};
+use alpine_sim::supply::{CarryLeg, Stock};
 use alpine_sim::sim::{Order, PLAYER_SIDE, Side, Sim, SquadState};
 use alpine_sim::sky;
 use bevy::diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin};
@@ -167,12 +168,23 @@ fn squad_now(sim: &Sim, q: u32) -> String {
         Some((p, _)) => {
             let place = &sim.places[p];
             let there = matches!(sq.state, SquadState::Arrived | SquadState::Idle);
+            if let Some(leg) = sq.carry {
+                return match leg {
+                    CarryLeg::ToDump => format!("going to fetch from the {}", place.name),
+                    CarryLeg::Loading { .. } => format!("loading at the {}", place.name),
+                    CarryLeg::ToStore { stock } => format!("carrying {} to the {}", stock.word(), place.name),
+                    CarryLeg::Unloading { .. } => format!("unloading at the {}", place.name),
+                    CarryLeg::Done if sq.inside => format!("asleep, {} (store full)", place.name),
+                    CarryLeg::Done => format!("store full, going to the {}", place.name),
+                };
+            }
             match (place.kind, sq.inside, there) {
                 (PlaceKind::Shelter, true, _) => format!("asleep, {}", place.name),
                 (PlaceKind::Post, _, true) => format!("on guard, {}", place.name),
                 _ => format!("going to the {}", place.name),
             }
         }
+        None if sq.members.is_empty() => "all men lost".into(),
         None => "-".into(),
     }
 }
@@ -183,7 +195,10 @@ fn squad_now(sim: &Sim, q: u32) -> String {
 /// when it moves on.
 fn roster_table(ui: &mut egui::Ui, link: &mut SimLink, selection: &mut Selection, id: &str) {
     let sim = &link.sim;
-    let ours: Vec<u32> = sim.squads.iter().filter(|q| q.side == PLAYER_SIDE && q.roster.is_some()).map(|q| q.id).collect();
+    let ours: Vec<u32> =
+        sim.squads.iter().filter(|q| q.side == PLAYER_SIDE && q.roster.is_some() && !q.members.is_empty()).map(|q| q.id).collect();
+    // The carry duty exists only with carrying parties, cold and hunger on (decision 46).
+    let duties: &[Duty] = if sim.supply.is_some() { &[Duty::Guard, Duty::Rest, Duty::Carry] } else { &[Duty::Guard, Duty::Rest] };
     if ours.is_empty() {
         return;
     }
@@ -204,7 +219,7 @@ fn roster_table(ui: &mut egui::Ui, link: &mut SimLink, selection: &mut Selection
             for night in [false, true] {
                 let current = r.duty(night);
                 ui.horizontal(|ui| {
-                    for duty in [Duty::Guard, Duty::Rest] {
+                    for &duty in duties {
                         if ui.selectable_label(current == duty, duty.word()).clicked() && current != duty {
                             let mut nr = r;
                             if night {
@@ -311,6 +326,11 @@ pub fn panels(
             ui.separator();
             ui.label(clock_text(&link.sim));
             ui.separator();
+            if let Some(sup) = &link.sim.supply {
+                ui.label(format!("Store: food {:.1} days, fuel {:.1} days", sup.days_left(Stock::Food), sup.days_left(Stock::Fuel)))
+                    .on_hover_text("What the kitchen cavern holds, in days for the company. Set squads to carry by day or night to fill it from the Sief dump.");
+                ui.separator();
+            }
             let paused = link.paused;
             let skipping = link.skipping;
             let waiting = link.dawn_screen;
@@ -439,16 +459,21 @@ pub fn panels(
                     };
                     ui.label(format!("Status: {state}"));
                     let mut back = false;
-                    if let Some(r) = sim.roster_shown(q as usize) {
+                    if let (Some(r), Some(&lead)) = (sim.roster_shown(q as usize), sq.members.first()) {
                         ui.label(format!("Duties: {} by day, {} by night. Now: {}.", r.day.word(), r.night.word(), squad_now(sim, q)));
                         let t = squad_tiredness(sim, q);
-                        let lead = sq.members[0];
                         ui.label(format!(
                             "The men are {} ({:.0}% of the way to exhausted); they spot a man at up to {:.0} m now.",
                             roster::tiredness_word(t),
                             t * 100.0,
                             sim.spotting_range_of(lead)
                         ));
+                        if let Some(sup) = &sim.supply {
+                            let n = sq.members.len().max(1) as f32;
+                            let chill = sq.members.iter().map(|&m| sim.soldiers[m as usize].chill).sum::<f32>() / n;
+                            let meal = sq.members.iter().map(|&m| sim.soldiers[m as usize].minutes_since_meal).max().unwrap_or(0);
+                            ui.label(format!("They are {} and {}.", sup.tuning.cold.word(chill), sup.tuning.hunger.word(meal)));
+                        }
                         if sq.detached && !sim.back_to_duty_pending(q as usize) {
                             ui.small("Sent away by you: it takes up its duty again at the next dusk or dawn.");
                             back = ui.button("Back to duty").clicked();

@@ -14,7 +14,10 @@ April 1916 mine; the calendar (Monday 6 to Sunday 12 March 1916), with the sun, 
 diary setting how far men can see, from 1,500 m by day to 15 to 50 m on a dark night; the dawn orders
 screen with a morning report; the skip-ahead; and the work roster: each squad guards a lookout post
 or sleeps in a shelter, by day and by night, and men tire while awake (posts and shelters from period
-accounts of the summit position, in `data/places/col_di_lana_1916.toml`).
+accounts of the summit position, in `data/places/col_di_lana_1916.toml`); and carrying parties, cold
+and hunger: food and fuel come up from a dump on Monte Sief to the kitchen cavern on the summit, men
+grow cold outside and hungry without meals, and the neglected are lost to frostbite or die (numbers
+in `data/supply.toml`; the week's temperatures in `data/weather/march_1916.toml`).
 
 - [Design brief](docs/design-brief.md): what the game is, the agreed decisions, architecture and
   build order
@@ -30,7 +33,10 @@ Built in Rust with the Bevy engine.
 
 The game opens at first light on Monday 6 March 1916 with the orders screen; press Enter (or click
 "Carry on") to start the day. It stops there again every morning at first light. The orders screen
-holds the work roster: click "guard" or "rest" for each squad's day and night duty. Squads change over
+holds the work roster: click "guard", "rest" or "carry" for each squad's day and night duty. A
+carrying squad walks to the Sief dump, loads up and brings food or fuel (whichever is lower) to the
+kitchen cavern, over and over, and rests once the store is full; the store's days of food and fuel
+show at the top of the screen. Squads change over
 by themselves at dusk and dawn; the side panel's "Work roster" changes duties at any time. Resting men
 are inside their shelter and are not drawn; select their squad from the roster. A squad you send
 somewhere leaves its duty until the next dusk or dawn, or until you press "Back to duty".
@@ -61,7 +67,9 @@ on the left switches the overlays.
 
 The scenario tests end in a plain-language report: `--test scenarios` runs the step-1 tests (about
 30 s), `--test step2` the calendar, night and skip-ahead tests (about 3 minutes), `--test roster` the
-work-roster tests (about 90 s).
+work-roster tests (about 90 s), `--test supply` the carrying, cold and hunger tests (about 2
+minutes). They test the lasting rules only; numbers that later steps or tuning will move are judged
+by playing (decision 56).
 
 ## Speed pass
 
@@ -106,6 +114,12 @@ game minutes after dusk). The frame check now plays the roster game with the pla
 (resting men are in their shelters and not drawn): 99% of frames within 8.6 ms in both views. Run
 flat out the simulation goes about 990x faster than real time; the skip-ahead on the roster crosses
 Monday night, dusk to first light, in about 15 s.
+
+Carrying parties, cold and hunger (2026-11-18, decisions 45 to 54): passed on the second run. The
+first run had one frame of 1,688 at 9.9 ms in the random-orders run (which has no carrying, cold or
+hunger in it); the second run's busiest frame there was 4.2 ms, as before. The game as played now
+runs with carrying, cold and hunger on and one squad carrying around the clock: busiest frame 4.2 ms
+(99% within 1.7 ms). 99% of drawn frames within 8.7 ms in both views.
 
 `ALPINE_CLICK_CHECK=1 target\release\alpine_front.exe --view map` (or `--view terrain`) checks that a
 view can be played: it carries on at the dawn orders screen, moves in close to the summit (where the

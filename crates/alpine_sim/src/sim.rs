@@ -4,8 +4,10 @@
 //! 0. with a calendar (step 2 on): the clock moves on, the light and spotting distance are worked
 //!    out for the new moment, and dawn and dusk are noted;
 //! 1. with a work roster: at dawn and dusk every rostered squad takes up its duty for the half of
-//!    the day now beginning; then orders scheduled for this tick are given to their squads, and once
-//!    a game minute the player's men tire or recover;
+//!    the day now beginning (and, with the supply file, the men eat); then orders scheduled for this
+//!    tick are given to their squads; carrying squads load, unload and set off again; and once a game
+//!    minute the player's men tire or recover (with the supply file also: fuel burns, men grow cold
+//!    or warm up and hungrier, and the very cold may get frostbite or die);
 //! 2. patrolling squads that have waited long enough pick a new destination;
 //! 3. squads whose route is ready start moving;
 //! 4. every soldier moves (split across threads; each man reads only the previous state);
@@ -28,6 +30,7 @@ use crate::rng::Rng;
 use crate::roster::{Duty, Place, PlaceKind, Roster};
 use crate::sky::{self, Calendar, SkyState};
 use crate::spatial::SpatialGrid;
+use crate::supply::{CarryLeg, ColdTuning, Lost, LostMan, Stock, Supply, SupplyFile};
 use crate::terrain::Terrain;
 use crate::tuning::Tuning;
 use crate::weather::Weather;
@@ -144,6 +147,14 @@ pub struct Soldier {
     pub sees: Vec<u32>,
     /// How tired he is: 0 fresh, 1 exhausted (games with a work roster; decision 43).
     pub tiredness: f32,
+    /// How cold he is: 0 warm, 1 the worst (games with the supply file; decision 51).
+    pub chill: f32,
+    /// Game minutes since his last meal (games with the supply file).
+    pub minutes_since_meal: u32,
+    /// Game minutes in a row he has been outside at the worst cold.
+    pub worst_minutes: u32,
+    /// Lost to the company: sent down with frostbite, or dead. He is out of the game.
+    pub gone: Option<Lost>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -194,6 +205,10 @@ pub struct Squad {
     /// What it has done since the latest dawn, and what it did in the 24 hours before that.
     pub today: DayRecord,
     pub yesterday: Option<DayRecord>,
+    /// On carry duty: where it is in its round (games with the supply file).
+    pub carry: Option<CarryLeg>,
+    /// Its men walk at this share of their speed (carrying loads, carrying in the dark); 1 otherwise.
+    pub pace: f32,
 }
 
 /// What a squad on the roster did in a day, for the morning report.
@@ -204,6 +219,8 @@ pub struct DayRecord {
     pub sleep_minutes: u32,
     /// Sent elsewhere by the player at some point.
     pub sent_away: bool,
+    /// Game minutes on carry duty, walking or loading (games with the supply file).
+    pub carry_minutes: u32,
 }
 
 /// A route calculation running on a worker thread.
@@ -250,8 +267,11 @@ pub struct Sim {
     pub events: Vec<Event>,
     /// Every event since the start, in order.
     pub journal: Vec<LoggedEvent>,
-    /// The lookout posts and shelters of the work roster (empty without one).
+    /// The lookout posts and shelters of the work roster (empty without one), then, with the supply
+    /// file, the dump and the store.
     pub places: Vec<Place>,
+    /// The summit's stocks, cold and hunger (games with the supply file; decisions 45 to 53).
+    pub supply: Option<Supply>,
     rng: Rng,
     pool: Arc<rayon::ThreadPool>,
     scheduled: VecDeque<LoggedOrder>,
@@ -291,6 +311,7 @@ impl Sim {
             events: Vec::new(),
             journal: Vec::new(),
             places: Vec::new(),
+            supply: None,
             los: LosParams::from_tuning(&tuning.line_of_sight),
             terrain,
             tuning,
@@ -362,6 +383,10 @@ impl Sim {
                 still_ticks: 0,
                 sees: Vec::new(),
                 tiredness: 0.0,
+                chill: 0.0,
+                minutes_since_meal: 0,
+                worst_minutes: 0,
+                gone: None,
             });
         }
         self.squads.push(Squad {
@@ -384,6 +409,8 @@ impl Sim {
             roster_move: false,
             today: DayRecord::default(),
             yesterday: None,
+            carry: None,
+            pace: 1.0,
         });
         self.grid.rebuild(self.soldiers.iter().map(|s| (s.x, s.y)));
         sid
@@ -576,7 +603,14 @@ impl Sim {
     pub fn duty_now(&self, i: usize) -> Option<Duty> {
         let q = &self.squads[i];
         let night = self.clock.as_ref().is_some_and(|c| c.night);
-        if q.detached { None } else { q.roster.map(|r| r.duty(night)) }
+        if q.detached {
+            return None;
+        }
+        // Carrying needs the supply file; without it a squad set to carry rests instead.
+        q.roster.map(|r| match r.duty(night) {
+            Duty::Carry if self.supply.is_none() => Duty::Rest,
+            d => d,
+        })
     }
 
     /// Picks a place and spot for squad `i`'s current duty: the first free regular spot at a place
@@ -614,12 +648,26 @@ impl Sim {
     /// otherwise is given one and walks there.
     fn take_up_duty(&mut self, i: usize) {
         let Some(duty) = self.duty_now(i) else { return };
+        if self.squads[i].members.is_empty() {
+            return;
+        }
+        if duty == Duty::Carry {
+            self.take_up_carrying(i);
+            return;
+        }
+        self.squads[i].carry = None;
+        self.squads[i].pace = 1.0;
         let kind = duty.place_kind();
         if let Some((p, _)) = self.squads[i].post
             && self.places[p].kind == kind
         {
             return;
         }
+        self.send_to(i, kind);
+    }
+
+    /// Sends squad `i` to a free spot at a place of `kind`, as a roster move (no arrival message).
+    fn send_to(&mut self, i: usize, kind: PlaceKind) {
         self.squads[i].post = None;
         let Some((p, k)) = self.choose_spot(i, kind) else { return };
         let (x, y) = self.places[p].spot(k);
@@ -627,6 +675,217 @@ impl Sim {
         q.post = Some((p, k));
         q.roster_move = true;
         self.start_move(i as u32, x, y);
+    }
+
+    /// Whether squad `i` is at, or walking to, a place of `kind`.
+    fn post_kind(&self, i: usize) -> Option<PlaceKind> {
+        self.squads[i].post.map(|(p, _)| self.places[p].kind)
+    }
+
+    /// Squad `i` takes up carrying (decision 49): it carries on with a round already under way;
+    /// otherwise it sets off for the dump, unless the store is full, when it rests in a shelter.
+    fn take_up_carrying(&mut self, i: usize) {
+        let at = self.post_kind(i);
+        match self.squads[i].carry {
+            Some(CarryLeg::Done) | None => {}
+            Some(_) if matches!(at, Some(PlaceKind::Dump | PlaceKind::Store)) => return,
+            Some(_) => {}
+        }
+        let full = self.supply.as_ref().is_some_and(Supply::full);
+        if full {
+            self.squads[i].carry = Some(CarryLeg::Done);
+            self.squads[i].pace = 1.0;
+            if at != Some(PlaceKind::Shelter) {
+                self.send_to(i, PlaceKind::Shelter);
+            }
+        } else {
+            self.squads[i].carry = Some(CarryLeg::ToDump);
+            self.set_pace(i);
+            self.send_to(i, PlaceKind::Dump);
+        }
+    }
+
+    /// Sets squad `i`'s walking pace from its carrying: slower loaded, slower again in the dark.
+    fn set_pace(&mut self, i: usize) {
+        let Some(sup) = &self.supply else { return };
+        let night = self.clock.as_ref().is_some_and(|c| c.night);
+        let ct = &sup.tuning.carrying;
+        let q = &mut self.squads[i];
+        q.pace = match q.carry {
+            None | Some(CarryLeg::Done) => 1.0,
+            Some(leg) => {
+                let laden = matches!(leg, CarryLeg::ToStore { .. } | CarryLeg::Unloading { .. });
+                (if laden { ct.laden_walking_factor } else { 1.0 }) * (if night { ct.night_walking_factor } else { 1.0 })
+            }
+        };
+    }
+
+    /// Carrying squads that have finished loading or unloading move on (once per update).
+    fn advance_carrying(&mut self, tick: u64) {
+        if self.supply.is_none() {
+            return;
+        }
+        for i in 0..self.squads.len() {
+            match self.squads[i].carry {
+                Some(CarryLeg::Loading { until }) if until <= tick => {
+                    let stock = self.supply.as_ref().unwrap().lower();
+                    self.squads[i].carry = Some(CarryLeg::ToStore { stock });
+                    self.set_pace(i);
+                    self.send_to(i, PlaceKind::Store);
+                }
+                Some(CarryLeg::Unloading { until, stock }) if until <= tick => {
+                    let men = self.squads[i].members.len() as f32;
+                    let sup = self.supply.as_mut().unwrap();
+                    sup.unload(stock, men * sup.tuning.carrying.load_kg);
+                    if sup.full() {
+                        self.squads[i].carry = Some(CarryLeg::Done);
+                        self.set_pace(i);
+                        self.send_to(i, PlaceKind::Shelter);
+                    } else {
+                        self.squads[i].carry = Some(CarryLeg::ToDump);
+                        self.set_pace(i);
+                        self.send_to(i, PlaceKind::Dump);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    /// A carrying squad has arrived at the dump or the store: it starts loading or unloading.
+    fn carrier_arrived(&mut self, i: usize, tick: u64) {
+        let Some(sup) = &self.supply else { return };
+        let ct = &sup.tuning.carrying;
+        let (load, unload) = (self.tuning.seconds_to_ticks(ct.loading_minutes * 60.0), self.tuning.seconds_to_ticks(ct.unloading_minutes * 60.0));
+        let at = self.post_kind(i);
+        let q = &mut self.squads[i];
+        q.carry = match (q.carry, at) {
+            (Some(CarryLeg::ToDump), Some(PlaceKind::Dump)) => Some(CarryLeg::Loading { until: tick + load }),
+            (Some(CarryLeg::ToStore { stock }), Some(PlaceKind::Store)) => Some(CarryLeg::Unloading { until: tick + unload, stock }),
+            (c, _) => c,
+        };
+    }
+
+    /// Puts the supply file in force (decisions 45 to 53), in a game with a work roster: adds the dump
+    /// and the store to the places, and fills the store for the men on the summit now.
+    pub fn start_supply(&mut self, file: SupplyFile) -> Result<(), String> {
+        if self.places.is_empty() {
+            return Err("the supply file needs a game with a work roster".into());
+        }
+        let (dump, store) = crate::supply::places(&file, &self.terrain, &self.places)?;
+        self.places.push(dump);
+        self.places.push(store);
+        let men = self.by_side[PLAYER_SIDE.index()].len() as f32;
+        let st = &file.stocks;
+        let (food_per_day_kg, fuel_per_day_kg) = (men * st.food_kg_per_man_day, men * st.fuel_kg_per_man_day);
+        self.supply = Some(Supply {
+            food_kg: food_per_day_kg * st.store_days,
+            fuel_kg: fuel_per_day_kg * st.store_days,
+            food_cap_kg: food_per_day_kg * st.store_days,
+            fuel_cap_kg: fuel_per_day_kg * st.store_days,
+            food_per_day_kg,
+            fuel_per_day_kg,
+            dump: self.places.len() - 2,
+            store: self.places.len() - 1,
+            lost: Vec::new(),
+            carried_today: [0.0; 2],
+            carried_yesterday: None,
+            missed_meals_today: 0,
+            missed_meals_yesterday: None,
+            tuning: file,
+        });
+        // Squads set to carry now set off.
+        for i in 0..self.squads.len() {
+            if self.duty_now(i) == Some(Duty::Carry) {
+                self.take_up_duty(i);
+            }
+        }
+        Ok(())
+    }
+
+    /// A meal, at dawn and at dusk: each of the player's men eats half a day's food, while the store
+    /// has it, in soldier order.
+    fn serve_meal(&mut self) {
+        let Some(sup) = self.supply.as_mut() else { return };
+        let ration = sup.tuning.stocks.food_kg_per_man_day * 0.5;
+        let mut missed = false;
+        for &i in &self.by_side[PLAYER_SIDE.index()] {
+            let s = &mut self.soldiers[i as usize];
+            if sup.food_kg >= ration - 1e-4 {
+                sup.food_kg = (sup.food_kg - ration).max(0.0);
+                s.minutes_since_meal = 0;
+            } else {
+                missed = true;
+            }
+        }
+        if missed {
+            sup.missed_meals_today += 1;
+        }
+    }
+
+    /// Soldier `i` leaves the company: sent down with frostbite, or dead.
+    fn lose_man(&mut self, i: u32, why: Lost, tick: u64) {
+        let s = &mut self.soldiers[i as usize];
+        s.gone = Some(why);
+        s.sees.clear();
+        s.arrived = true;
+        s.waypoint = None;
+        let (squad, side) = (s.squad, s.side);
+        self.by_side[side.index()].retain(|&m| m != i);
+        let q = &mut self.squads[squad as usize];
+        q.members.retain(|&m| m != i);
+        if q.members.is_empty() {
+            q.post = None;
+            q.carry = None;
+            q.inside = false;
+            q.state = SquadState::Idle;
+            q.field = None;
+        }
+        if let Some(sup) = self.supply.as_mut() {
+            sup.lost.push(LostMan { tick: tick + 1, soldier: i, squad, why });
+        }
+    }
+
+    /// Once a game minute with the supply file: fuel burns, the player's men grow cold or warm up and
+    /// grow hungrier, and the very cold may get frostbite or die (decisions 48, 51 and 52).
+    fn supply_minute(&mut self, tick: u64) {
+        let Some(sup) = self.supply.as_mut() else { return };
+        let men = self.by_side[PLAYER_SIDE.index()].len() as f32;
+        sup.fuel_kg = (sup.fuel_kg - men * sup.tuning.stocks.fuel_kg_per_man_day / (24.0 * 60.0)).max(0.0);
+        let heated = sup.fuel_kg > 0.0;
+        let celsius = self.clock.as_ref().map_or(crate::weather::DEFAULT_CELSIUS, |c| {
+            c.weather.celsius_at(c.calendar.local_seconds(tick as f64 * self.tuning.dt() as f64))
+        }) as f32;
+        let (ct, ht) = (&sup.tuning.cold, &sup.tuning.hunger);
+        let mut losses = Vec::new();
+        for &i in &self.by_side[PLAYER_SIDE.index()] {
+            let s = &mut self.soldiers[i as usize];
+            let inside = self.squads[s.squad as usize].inside;
+            let hunger = ht.hunger(s.minutes_since_meal);
+            if inside {
+                if heated {
+                    s.chill -= ct.warming_per_hour / 60.0 * ht.scale(hunger, ht.warming_factor);
+                }
+            } else {
+                let moving = if s.arrived { 1.0 } else { ct.moving_factor };
+                s.chill += ct.per_degree_hour * (-celsius).max(0.0) / 60.0 * moving * ht.scale(hunger, ht.chilling_factor);
+            }
+            s.chill = s.chill.clamp(0.0, 1.0);
+            s.worst_minutes = if !inside && s.chill >= 0.999 { s.worst_minutes + 1 } else { 0 };
+            s.minutes_since_meal = s.minutes_since_meal.saturating_add(1);
+            if !inside {
+                if s.worst_minutes as f32 >= ct.death_after_hours_at_worst * 60.0 {
+                    losses.push((i, Lost::Died, ct.death_chance_per_hour / 60.0));
+                } else if s.chill >= ct.frostbite_from {
+                    losses.push((i, Lost::Frostbite, ct.frostbite_per_hour(s.chill) / 60.0));
+                }
+            }
+        }
+        for (i, why, p) in losses {
+            if self.rng.unit() < p {
+                self.lose_man(i, why, tick);
+            }
+        }
     }
 
     /// Dawn or dusk: every rostered squad, including those sent elsewhere, takes up its duty for
@@ -641,12 +900,21 @@ impl Sim {
             if q.roster.is_some() {
                 q.detached = false;
             }
-            let wanted = self.duty_now(i).map(Duty::place_kind);
-            let q = &mut self.squads[i];
-            if let Some((p, _)) = q.post
-                && wanted != Some(self.places[p].kind)
-            {
-                q.post = None;
+            let duty = self.duty_now(i);
+            let wanted = duty.map(Duty::place_kind);
+            let at = self.post_kind(i);
+            // A squad staying on carry duty carries on with its round (or stays resting if done).
+            let carrying_on = duty == Some(Duty::Carry)
+                && match self.squads[i].carry {
+                    Some(CarryLeg::Done) => at == Some(PlaceKind::Shelter),
+                    Some(_) => matches!(at, Some(PlaceKind::Dump | PlaceKind::Store)),
+                    None => false,
+                };
+            if at.is_some() && wanted != at && !carrying_on {
+                self.squads[i].post = None;
+            }
+            if self.squads[i].carry.is_some() {
+                self.set_pace(i);
             }
         }
         for i in 0..self.squads.len() {
@@ -704,10 +972,16 @@ impl Sim {
                 for q in self.squads.iter_mut().filter(|q| q.roster.is_some()) {
                     q.yesterday = Some(std::mem::take(&mut q.today));
                 }
+                if let Some(sup) = self.supply.as_mut() {
+                    sup.carried_yesterday = Some(std::mem::take(&mut sup.carried_today));
+                    sup.missed_meals_yesterday = Some(std::mem::take(&mut sup.missed_meals_today));
+                }
+                self.serve_meal();
                 self.change_shift();
             } else if before > sky::DUSK_ALTITUDE_DEG && sky.sun_altitude_deg <= sky::DUSK_ALTITUDE_DEG {
                 c.night = true;
                 self.note(Event::Dusk);
+                self.serve_meal();
                 self.change_shift();
             }
         }
@@ -720,6 +994,9 @@ impl Sim {
                     if (squad as usize) < self.squads.len() {
                         let q = &mut self.squads[squad as usize];
                         q.roster_move = false;
+                        // Sent elsewhere, a carrying squad drops its round (and any load it carries).
+                        q.carry = None;
+                        q.pace = 1.0;
                         if q.roster.is_some() {
                             q.detached = true;
                             q.post = None;
@@ -746,6 +1023,7 @@ impl Sim {
             }
             self.order_log.push(o);
         }
+        self.advance_carrying(tick);
 
         // Tiredness, once a game minute (games with a work roster only).
         let minute = self.tuning.seconds_to_ticks(60.0);
@@ -754,12 +1032,30 @@ impl Sim {
             let (up, down) = (1.0 / (tt.hours_awake_to_exhausted * 60.0), 1.0 / (tt.hours_asleep_to_fresh * 60.0));
             for &i in &self.by_side[PLAYER_SIDE.index()] {
                 let s = &mut self.soldiers[i as usize];
-                let asleep = self.squads[s.squad as usize].inside;
+                let q = &self.squads[s.squad as usize];
+                let asleep = q.inside;
+                // With the supply file: cold, hunger and carrying tire a man faster; hunger spoils
+                // his sleep.
+                let (up, down) = match &self.supply {
+                    None => (up, down),
+                    Some(sup) => {
+                        let ht = &sup.tuning.hunger;
+                        let hunger = ht.hunger(s.minutes_since_meal);
+                        let carrying = matches!(q.carry, Some(c) if c != CarryLeg::Done);
+                        let carry = if carrying { sup.tuning.carrying.tiring_factor } else { 1.0 };
+                        (
+                            up * sup.tuning.cold.tiring_factor(s.chill) * ht.scale(hunger, ht.tiring_factor) * carry,
+                            down * ht.scale(hunger, ht.sleep_factor),
+                        )
+                    }
+                };
                 s.tiredness = if asleep { (s.tiredness - down).max(0.0) } else { (s.tiredness + up).min(1.0) };
             }
             for q in self.squads.iter_mut().filter(|q| q.roster.is_some()) {
                 if q.inside {
                     q.today.sleep_minutes += 1;
+                } else if matches!(q.carry, Some(c) if c != CarryLeg::Done) {
+                    q.today.carry_minutes += 1;
                 } else if let Some((p, _)) = q.post
                     && self.places[p].kind == PlaceKind::Post
                     && q.state == SquadState::Arrived
@@ -767,6 +1063,7 @@ impl Sim {
                     q.today.guard_minutes += 1;
                 }
             }
+            self.supply_minute(tick);
         }
 
         // 2. Patrols.
@@ -807,6 +1104,7 @@ impl Sim {
                 soldiers: &self.soldiers,
                 squads: &self.squads,
                 grid: &self.grid,
+                cold: self.supply.as_ref().map(|s| &s.tuning.cold),
             };
             self.pool.install(|| self.soldiers.par_iter().map(|s| ctx.update(s)).collect())
         };
@@ -824,7 +1122,7 @@ impl Sim {
 
         // 5. Arrivals.
         for i in 0..self.squads.len() {
-            if self.squads[i].state != SquadState::Moving {
+            if self.squads[i].state != SquadState::Moving || self.squads[i].members.is_empty() {
                 continue;
             }
             let all = self.squads[i].members.iter().all(|&m| self.soldiers[m as usize].arrived);
@@ -835,6 +1133,9 @@ impl Sim {
                     && self.places[p].kind == PlaceKind::Shelter
                 {
                     self.squads[i].inside = true;
+                }
+                if self.squads[i].carry.is_some() {
+                    self.carrier_arrived(i, tick);
                 }
                 if self.squads[i].patrol.is_some() {
                     let p = self.patrol_pause_ticks();
@@ -849,7 +1150,7 @@ impl Sim {
         // 6. Spotting.
         let look = self.tuning.seconds_to_ticks(self.tuning.spotting.look_interval_s);
         let due: Vec<u32> =
-            self.soldiers.iter().filter(|s| (s.id as u64) % look == tick % look).map(|s| s.id).collect();
+            self.soldiers.iter().filter(|s| s.gone.is_none() && (s.id as u64) % look == tick % look).map(|s| s.id).collect();
         let seen: Vec<Vec<u32>> = {
             let me = &*self;
             me.pool.install(|| due.par_iter().map(|&i| me.spot_from(i)).collect())
@@ -1028,6 +1329,38 @@ impl Sim {
                     }
                 }
             }
+            // Carrying, cold and hunger, where the supply file is in force.
+            if let Some(sup) = &self.supply {
+                h.f32(sup.food_kg);
+                h.f32(sup.fuel_kg);
+                h.u64(sup.lost.len() as u64);
+                h.f32(sup.carried_today[0]);
+                h.f32(sup.carried_today[1]);
+                h.u32(sup.missed_meals_today);
+                for s in &self.soldiers {
+                    h.f32(s.chill);
+                    h.u32(s.minutes_since_meal);
+                    h.u32(s.worst_minutes);
+                    h.u32(match s.gone {
+                        None => 0,
+                        Some(Lost::Frostbite) => 1,
+                        Some(Lost::Died) => 2,
+                    });
+                }
+                for q in &self.squads {
+                    let stock = |s: Stock| s as u64;
+                    h.u64(match q.carry {
+                        None => 0,
+                        Some(CarryLeg::ToDump) => 1,
+                        Some(CarryLeg::Loading { until }) => 2 + 16 * until,
+                        Some(CarryLeg::ToStore { stock: s }) => 3 + 16 * stock(s),
+                        Some(CarryLeg::Unloading { until, stock: s }) => 4 + 16 * (until * 2 + stock(s)),
+                        Some(CarryLeg::Done) => 5,
+                    });
+                    h.f32(q.pace);
+                    h.u32(q.today.carry_minutes);
+                }
+            }
         }
         h.finish()
     }
@@ -1050,6 +1383,8 @@ struct MoveCtx<'a> {
     soldiers: &'a [Soldier],
     squads: &'a [Squad],
     grid: &'a SpatialGrid,
+    /// Cold's numbers, with the supply file.
+    cold: Option<&'a ColdTuning>,
 }
 
 impl MoveCtx<'_> {
@@ -1068,7 +1403,7 @@ impl MoveCtx<'_> {
             waypoint: s.waypoint,
             still_ticks: 0,
         };
-        if sq.state != SquadState::Moving || s.arrived {
+        if sq.state != SquadState::Moving || s.arrived || s.gone.is_some() {
             return resting;
         }
         let field = sq.field.as_ref().expect("moving squad has a route");
@@ -1110,8 +1445,9 @@ impl MoveCtx<'_> {
                 return;
             }
             let o = &self.soldiers[j as usize];
-            // Men inside a shelter are under rock or a roof, not in the way of anyone outside.
-            if self.squads[o.squad as usize].inside {
+            // Men inside a shelter are under rock or a roof, not in the way of anyone outside; men
+            // lost to the company are gone.
+            if self.squads[o.squad as usize].inside || o.gone.is_some() {
                 return;
             }
             let (ex, ey) = (s.x - o.x, s.y - o.y);
@@ -1145,7 +1481,11 @@ impl MoveCtx<'_> {
         }
         let (ux, uy) = (mx / ml, my / ml);
         let grade = t.height(s.x + ux, s.y + uy) - t.height(s.x, s.y);
-        let tired = tu.tiredness.walking_factor(s.tiredness);
+        // Tiredness and cold do not add up: the worse counts. Then the squad's pace (carrying).
+        let mut tired = tu.tiredness.walking_factor(s.tiredness);
+        if let Some(cold) = self.cold {
+            tired = tired.min(cold.walking_factor(s.chill)) * sq.pace;
+        }
         let mut step = tu.walking.speed_mps(grade) * tired * dt * ml.min(1.0);
         if to_slot && dist < step && px == 0.0 && py == 0.0 {
             step = dist;
@@ -1162,6 +1502,23 @@ impl MoveCtx<'_> {
             if t.walkable_at(s.x + rx * rstep, s.y + ry * rstep) {
                 nx = s.x + rx * rstep;
                 ny = s.y + ry * rstep;
+            }
+        }
+        // Still blocked: he has been pushed off the route's line beside steep ground (on a narrow
+        // ridge, say). Step back onto the nearest grid point, where the route's lines run.
+        if !t.walkable_at(nx, ny) {
+            let (gc, gr) = t.nearest_point(s.x, s.y);
+            let (gx, gy) = t.point_xy(gc, gr);
+            let (ex, ey) = (gx - s.x, gy - s.y);
+            let gd = (ex * ex + ey * ey).sqrt();
+            if gd > 1e-3 && t.walkable_at(gx, gy) {
+                let grade = t.height(gx, gy) - t.height(s.x, s.y);
+                let gstep = (tu.walking.speed_mps(grade / gd.max(1.0)) * tired * dt).min(gd);
+                let (qx, qy) = (s.x + ex / gd * gstep, s.y + ey / gd * gstep);
+                if t.walkable_at(qx, qy) {
+                    nx = qx;
+                    ny = qy;
+                }
             }
         }
         if !t.walkable_at(nx, ny) {

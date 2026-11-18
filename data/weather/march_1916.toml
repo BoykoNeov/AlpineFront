@@ -8,6 +8,11 @@
 # cover changes evenly; before the first and after the last it stays as it is. Keep changes spread
 # over an hour or more, as real cloud is.
 #
+# Air temperature on the summit, in degrees Celsius (decision 51), INVENTED like the cloud: about
+# -6 to -10 by day and -12 to -18 at night, coldest before dawn after a clear night, milder under
+# overcast. Between two entries it changes evenly. Used by cold: men outside grow colder the lower
+# it is.
+#
 # The falling snow piece of step 2 will add snowfall to this diary.
 
 cloud = [
@@ -51,4 +56,38 @@ cloud = [
     { at = "1916-03-12 14:00", cover = 0.8 },
     { at = "1916-03-12 18:00", cover = 1.0 },
     { at = "1916-03-13 08:00", cover = 1.0 },
+]
+
+temperature = [
+    # Sunday night before the week clears: a hard frost by Monday's first light.
+    { at = "1916-03-06 00:00", celsius = -15.0 },
+    { at = "1916-03-06 06:00", celsius = -17.0 },
+    { at = "1916-03-06 14:00", celsius = -8.0 },
+    # Monday night overcast: milder.
+    { at = "1916-03-06 20:00", celsius = -11.0 },
+    { at = "1916-03-07 06:00", celsius = -12.0 },
+    { at = "1916-03-07 14:00", celsius = -6.0 },
+    # Tuesday night clearing: colder after midnight.
+    { at = "1916-03-07 22:00", celsius = -12.0 },
+    { at = "1916-03-08 06:00", celsius = -16.0 },
+    { at = "1916-03-08 14:00", celsius = -9.0 },
+    # Wednesday night clear: the coldest night of the week.
+    { at = "1916-03-08 22:00", celsius = -16.0 },
+    { at = "1916-03-09 06:00", celsius = -18.0 },
+    { at = "1916-03-09 14:00", celsius = -9.0 },
+    # Thursday night overcast.
+    { at = "1916-03-09 20:00", celsius = -11.0 },
+    { at = "1916-03-10 06:00", celsius = -12.0 },
+    { at = "1916-03-10 14:00", celsius = -7.0 },
+    # Friday night partly cloudy.
+    { at = "1916-03-10 22:00", celsius = -12.0 },
+    { at = "1916-03-11 06:00", celsius = -14.0 },
+    { at = "1916-03-11 14:00", celsius = -8.0 },
+    # Saturday night clear.
+    { at = "1916-03-11 22:00", celsius = -15.0 },
+    { at = "1916-03-12 06:00", celsius = -17.0 },
+    { at = "1916-03-12 14:00", celsius = -8.0 },
+    # Sunday night overcast.
+    { at = "1916-03-12 20:00", celsius = -10.0 },
+    { at = "1916-03-13 06:00", celsius = -11.0 },
 ]
