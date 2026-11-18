@@ -44,7 +44,8 @@ pub fn morning_report(sim: &Sim) -> Option<MorningReport> {
     weather.push(format!("A man can be spotted at about {:.0} m now.", sim.spotting_range));
 
     let mut events = Vec::new();
-    let ours: Vec<_> = sim.squads.iter().filter(|q| q.side == PLAYER_SIDE).collect();
+    // Squads whose men are all lost are not counted.
+    let ours: Vec<_> = sim.squads.iter().filter(|q| q.side == PLAYER_SIDE && !q.members.is_empty()).collect();
     let men: usize = ours.iter().map(|q| q.members.len()).sum();
     match &sim.supply {
         Some(sup) if !sup.lost.is_empty() => {

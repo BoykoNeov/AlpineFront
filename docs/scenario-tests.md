@@ -93,7 +93,7 @@ rules only; how many days the stores last or how cold a night gets are numbers, 
 
 | # | Expectation |
 | --- | --- |
-| 30 | **Carrying delivers.** A squad on carry duty by day makes a delivery, and the store rises by its ten men's loads. *(Loosened 2026-11-18, decision 56: "within 2 game hours" dropped; the first trip takes about 2 h 10 min now.)* |
+| 30 | **Carrying delivers.** A squad on carry duty by day makes a delivery, and the store rises by its ten men's loads. *(Loosened 2026-11-18 by Claude, not yet approved by the director (decision 56): "within 2 game hours" dropped; the first trip takes about 2 h 10 min now.)* |
 | 31 | **The store has a limit.** The store never holds more than 3 days of either supply. A carrying squad with nothing left to fetch goes back to its shelter to rest. |
 | 32 | *Withdrawn 2026-11-18 by the director (decision 55): it pinned this week's numbers.* ~~Doing nothing: the stores run out on Thursday.~~ |
 | 33 | *Withdrawn 2026-11-18 by the director (decision 55): it pinned this week's numbers.* ~~A cold night is survivable.~~ |

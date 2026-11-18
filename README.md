@@ -115,7 +115,7 @@ game minutes after dusk). The frame check now plays the roster game with the pla
 flat out the simulation goes about 990x faster than real time; the skip-ahead on the roster crosses
 Monday night, dusk to first light, in about 15 s.
 
-Carrying parties, cold and hunger (2026-11-18, decisions 45 to 54): passed on the second run. The
+Carrying parties, cold and hunger (2026-11-18, decisions 45 to 54): passed on the second and third runs. The
 first run had one frame of 1,688 at 9.9 ms in the random-orders run (which has no carrying, cold or
 hunger in it); the second run's busiest frame there was 4.2 ms, as before. The game as played now
 runs with carrying, cold and hunger on and one squad carrying around the clock: busiest frame 4.2 ms

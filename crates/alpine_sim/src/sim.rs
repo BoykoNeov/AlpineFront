@@ -991,7 +991,8 @@ impl Sim {
             let o = self.scheduled.pop_front().unwrap();
             match o.order {
                 Order::Move { squad, x, y } => {
-                    if (squad as usize) < self.squads.len() {
+                    // A squad whose men are all lost cannot be sent anywhere.
+                    if self.squads.get(squad as usize).is_some_and(|q| !q.members.is_empty()) {
                         let q = &mut self.squads[squad as usize];
                         q.roster_move = false;
                         // Sent elsewhere, a carrying squad drops its round (and any load it carries).

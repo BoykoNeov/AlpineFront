@@ -223,26 +223,36 @@ fn test_neglect(w: &World) -> Outcome {
 }
 
 fn test_lost_leave(w: &World) -> Outcome {
+    // Once with frostbite certain, once with death certain (and no frostbite), so both kinds of
+    // loss are checked.
     let frost = |f: &mut SupplyFile| {
         f.cold.frostbite_chance_per_hour_from = 60.0;
         f.cold.frostbite_chance_per_hour_worst = 60.0;
     };
-    let (lost, sizes, line) = twice(|| neglect(w, false, frost))?;
-    let total: usize = sizes.iter().sum();
-    if lost.is_empty() {
-        return Err("nobody was lost, so this could not be checked".into());
+    let die = |f: &mut SupplyFile| {
+        f.cold.frostbite_chance_per_hour_from = 0.0;
+        f.cold.frostbite_chance_per_hour_worst = 0.0;
+        f.cold.death_chance_per_hour = 60.0;
+    };
+    let mut lines = Vec::new();
+    for (label, case) in [("frostbite", twice(|| neglect(w, false, frost))?), ("death", twice(|| neglect(w, true, die))?)] {
+        let (lost, sizes, line) = case;
+        let total: usize = sizes.iter().sum();
+        let frost_n = lost.iter().filter(|l| l.1 == format!("{:?}", Lost::Frostbite)).count();
+        let dead_n = lost.iter().filter(|l| l.1 == format!("{:?}", Lost::Died)).count();
+        let wanted = if label == "frostbite" { frost_n } else { dead_n };
+        if wanted == 0 {
+            return Err(format!("with {label} made certain, nobody was lost to it, so this could not be checked"));
+        }
+        if total + lost.len() != 30 {
+            return Err(format!("{} men were lost but the squads hold {total} of 30", lost.len()));
+        }
+        if !line.contains(&format!("{frost_n} sent down with frostbite, {dead_n} dead")) {
+            return Err(format!("the morning report does not count the {frost_n} frostbitten and {dead_n} dead: \"{line}\""));
+        }
+        lines.push(format!("with {label} made certain, {} men were lost and left their squads ({total} of 30 remain); the morning report says: \"{line}\"", lost.len()));
     }
-    if total + lost.len() != 30 {
-        return Err(format!("{} men were lost but the squads hold {total} of 30", lost.len()));
-    }
-    let frost_n = lost.iter().filter(|l| l.1 == format!("{:?}", Lost::Frostbite)).count();
-    if !line.contains(&format!("{frost_n} sent down with frostbite")) {
-        return Err(format!("the morning report does not count the {frost_n} frostbitten: \"{line}\""));
-    }
-    Ok(format!(
-        "{} men were lost and left their squads ({total} of 30 remain, squads of {sizes:?}); the morning report says: \"{line}\"",
-        lost.len()
-    ))
+    Ok(lines.join("; "))
 }
 
 // ---- 35. Hunger tires -----------------------------------------------------------------------------
