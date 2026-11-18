@@ -237,6 +237,10 @@ hardware.
      sent elsewhere leaves its duty until the next dusk or dawn, or until "Back to duty". The
      Italians do not tire yet; that comes with the enemy officer. Carrying is added with the
      carrying parties; digging waits for building (step 6).
+   - Carrying parties and simple cold and hunger are built as one piece (decision 45): the summit's
+     stocks run down each day, men go hungry and cold when they run short, and squads on carrying
+     duty bring supplies up, at the cost of not guarding or sleeping. Its details are planned with
+     the director before it is built.
    - The week is Monday 6 to Sunday 12 March 1916 (decision 31): deep snow and hard cold, the
      Italians tunnelling toward the summit since mid-January. On the summit the sun rises at about
      06:40 and sets at about 18:10 (Central European Time, before summer time began that April), so
