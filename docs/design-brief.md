@@ -264,7 +264,8 @@ hardware.
      (decision 66); every part of it has an on/off switch there (decision 65).
    - The night raid (being planned). The simple enemy officer picks the night: a dark, snowy one
      when the guards are weak, and Saturday night at the latest. The raiders come from the Italian
-     front trench just below the summit (decision 69).
+     front trench just below the summit (decision 69). About 30 of them go for one forward post to
+     take one or two guards prisoner, then pull back (decision 70).
    - The week is Monday 6 to Sunday 12 March 1916 (decision 31): deep snow and hard cold, the
      Italians tunnelling toward the summit since mid-January. On the summit the sun rises at about
      06:40 and sets at about 18:10 (Central European Time, before summer time began that April), so
