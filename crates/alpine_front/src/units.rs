@@ -1,6 +1,7 @@
 //! Soldiers in the 3D view: one simple shape each, coloured by side, brighter when an enemy can see
 //! him, yellow when his squad is selected. Shapes grow with distance so they stay visible from afar.
 
+use crate::overlays::OverlaySettings;
 use crate::sim_link::SimLink;
 use crate::terrain_view::to_world;
 use crate::view::{TerrainCam, ViewMode};
@@ -23,6 +24,11 @@ struct UnitMaterials {
     italy: Handle<StandardMaterial>,
     italy_seen: Handle<StandardMaterial>,
     selected: Handle<StandardMaterial>,
+    /// A man taken prisoner, being walked away.
+    captive: Handle<StandardMaterial>,
+    /// Men hit in the raid, lying where they fell until dawn.
+    fallen_austria: Handle<StandardMaterial>,
+    fallen_italy: Handle<StandardMaterial>,
 }
 
 /// A man is 1.6 m tall; seen from further than this he is drawn larger so he stays visible.
@@ -33,16 +39,25 @@ pub fn marker_scale(distance: f32) -> f32 {
     (distance / TRUE_SIZE_WITHIN_M).max(1.0)
 }
 
-/// For each soldier, whether any enemy can see him.
+/// For each soldier, whether an enemy can see him, as far as the player may know (a raider seeing
+/// one of our men does not show; decision 75).
 pub fn seen_by_enemy(link: &SimLink) -> Vec<bool> {
+    link.sim.seen_by_enemy_shown()
+}
+
+/// For each soldier, whether a man hit in the raid lies there now, drawn (once word has reached the
+/// command post, or always with the checking overlay).
+pub fn fallen_shown(link: &SimLink, everything: bool) -> Vec<bool> {
     let sim = &link.sim;
-    let mut seen = vec![false; sim.soldiers.len()];
-    for s in &sim.soldiers {
-        for &e in &s.sees {
-            seen[e as usize] = true;
+    let mut out = vec![false; sim.soldiers.len()];
+    if let Some(r) = &sim.raid
+        && (everything || r.known() || !r.tuning.switches.word_must_reach_command_post)
+    {
+        for f in &r.fallen {
+            out[f.man as usize] = true;
         }
     }
-    seen
+    out
 }
 
 pub struct UnitsPlugin;
@@ -71,6 +86,9 @@ fn spawn_units(
         italy: flat(&mut materials, Color::srgb(0.8, 0.12, 0.1)),
         italy_seen: flat(&mut materials, Color::srgb(1.0, 0.55, 0.5)),
         selected: flat(&mut materials, Color::srgb(1.0, 1.0, 0.2)),
+        captive: flat(&mut materials, Color::srgb(0.95, 0.95, 0.95)),
+        fallen_austria: flat(&mut materials, Color::srgb(0.12, 0.2, 0.4)),
+        fallen_italy: flat(&mut materials, Color::srgb(0.4, 0.08, 0.06)),
     };
     // A capsule 1.6 m tall, centred 0.8 m above the ground.
     let mesh = meshes.add(Capsule3d::new(0.3, 1.0));
@@ -86,6 +104,7 @@ fn place_units(
     selection: Res<Selection>,
     mats: Res<UnitMaterials>,
     mode: Res<ViewMode>,
+    settings: Res<OverlaySettings>,
     camera: Single<&Transform, (With<TerrainCam>, Without<SoldierMarker>)>,
     mut q: Query<(&SoldierMarker, &mut Transform, &mut Visibility, &mut MeshMaterial3d<StandardMaterial>)>,
 ) {
@@ -94,22 +113,39 @@ fn place_units(
     }
     let sim = &link.sim;
     let seen = seen_by_enemy(&link);
+    // Men inside a shelter are out of sight (decision 39); raiders show only as the player may know
+    // of them (decision 75).
+    let drawn = sim.drawn_men(settings.everything);
+    let fallen = fallen_shown(&link, settings.everything);
+    let captive = |i: usize| sim.raid.as_ref().is_some_and(|r| r.captive(i as u32));
     let cam = camera.translation;
     for (m, mut tf, mut vis, mut mat) in &mut q {
         let i = m.0 as usize;
         let s = &sim.soldiers[i];
-        // Men inside a shelter are out of sight (decision 39).
-        let inside = sim.squads[s.squad as usize].inside || s.gone.is_some();
-        vis.set_if_neq(if inside { Visibility::Hidden } else { Visibility::Inherited });
-        if inside {
+        let show = drawn[i] || fallen[i];
+        vis.set_if_neq(if show { Visibility::Inherited } else { Visibility::Hidden });
+        if !show {
             continue;
         }
         let (x, y) = link.drawn_position(i);
         let ground = to_world(x, y, sim.terrain.height(x, y));
         let scale = marker_scale(cam.distance(ground));
-        tf.translation = ground + Vec3::Y * 0.8 * scale;
         tf.scale = Vec3::splat(scale);
-        let want = if selection.squad == Some(s.squad) {
+        if fallen[i] {
+            // Lying on the ground.
+            tf.translation = ground + Vec3::Y * 0.3 * scale;
+            tf.rotation = Quat::from_rotation_z(std::f32::consts::FRAC_PI_2);
+            let want = if s.side == Side::Austria { &mats.fallen_austria } else { &mats.fallen_italy };
+            if mat.0 != *want {
+                mat.0 = want.clone();
+            }
+            continue;
+        }
+        tf.rotation = Quat::IDENTITY;
+        tf.translation = ground + Vec3::Y * 0.8 * scale;
+        let want = if captive(i) {
+            &mats.captive
+        } else if selection.squad == Some(s.squad) {
             &mats.selected
         } else {
             match (s.side, seen[i]) {

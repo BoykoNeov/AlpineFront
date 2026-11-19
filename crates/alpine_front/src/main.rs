@@ -24,6 +24,7 @@ mod map_view;
 mod orders;
 mod overlays;
 mod places_view;
+mod raid_view;
 mod shots;
 mod snow_view;
 mod sim_link;
@@ -58,11 +59,14 @@ pub struct Options {
     /// Checks only: heavy snow falling all the time, and this many centimetres of fresh snow lying
     /// from the start (the speed pass measures the flakes and the snow this way). Not recorded.
     pub snowing: Option<f32>,
+    /// Checks only: the raiders set out at once (the speed pass measures a raid this way). Not
+    /// recorded.
+    pub raid_now: bool,
 }
 
 const USAGE: &str = "usage: alpine_front [--seed N] [--step1] [--autoplay] [--replay FILE] [--view terrain|map] \
     [--frame-check SECONDS] [--advance-minutes M] [--camera X,Y,Z,TX,TY,TZ] [--map X,Y,WIDTH] \
-    [--overlays a,b] [--select ID] [--screenshot FILE] [--snowing CM]";
+    [--overlays a,b] [--select ID] [--screenshot FILE] [--snowing CM] [--raid-now]";
 
 /// `N` comma-separated numbers.
 fn numbers<const N: usize>(text: Option<String>, what: &str) -> Result<[f32; N], String> {
@@ -91,6 +95,7 @@ fn parse_options() -> Result<Options, String> {
         select: None,
         screenshot: None,
         snowing: None,
+        raid_now: false,
     };
     let mut args = std::env::args().skip(1);
     while let Some(a) = args.next() {
@@ -118,6 +123,7 @@ fn parse_options() -> Result<Options, String> {
             "--select" => o.select = Some(args.next().and_then(|v| v.parse().ok()).ok_or("--select needs a soldier id")?),
             "--screenshot" => o.screenshot = Some(args.next().ok_or("--screenshot needs a file")?.into()),
             "--snowing" => o.snowing = Some(args.next().and_then(|v| v.parse().ok()).ok_or("--snowing needs centimetres")?),
+            "--raid-now" => o.raid_now = true,
             "--help" | "-h" => return Err(USAGE.into()),
             other => return Err(format!("unknown option '{other}'")),
         }
@@ -176,6 +182,7 @@ fn main() {
             frame_check::FrameCheckPlugin,
             shots::ShotsPlugin,
             snow_view::SnowViewPlugin,
+            raid_view::RaidViewPlugin,
             click_check::ClickCheckPlugin,
         ))
         .run();

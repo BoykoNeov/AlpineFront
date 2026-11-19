@@ -265,8 +265,8 @@ hardware.
    - The night raid (decisions 69 to 75). The simple enemy officer picks the night from what he
      could know (the sky, his own sometimes-wrong forecast, the men he counts at our posts at
      dusk), not before Tuesday and on Saturday night at the latest, and sets out between 02:00 and
-     03:30. About 30 raiders in three squads wait hidden in the Italian front trench, 70 to 80 m
-     below the South and South-west posts, and go for one post to take one or two guards
+     03:30. About 30 raiders in three squads wait hidden in the Italian front trench, 74 to 83 m
+     below the South and South-east posts, and go for one post to take one or two guards
      prisoner, then pull back (decision 70). Word passes by voice, gunshots and flares, one rule
      for both sides; the raiders' officer whispers until the alarm is up, falling snow shortens a
      shout, and an awake man always notices someone moving within 5 m of him. The player hears of

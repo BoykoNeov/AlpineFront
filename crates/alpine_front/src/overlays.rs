@@ -30,11 +30,23 @@ pub struct OverlaySettings {
     pub routes: bool,
     /// The work roster's lookout posts and shelters, with their names.
     pub places: bool,
+    /// For checking only: draw every man, the raiders hidden in their trench and those our men cannot
+    /// see included (decision 75).
+    pub everything: bool,
 }
 
 impl Default for OverlaySettings {
     fn default() -> Self {
-        OverlaySettings { contours: true, steep: false, viewshed: false, snow: true, spotting: SpotLines::Everyone, routes: true, places: true }
+        OverlaySettings {
+            contours: true,
+            steep: false,
+            viewshed: false,
+            snow: true,
+            spotting: SpotLines::Everyone,
+            routes: true,
+            places: true,
+            everything: false,
+        }
     }
 }
 
@@ -188,11 +200,16 @@ fn collect_strokes(
     out.clear();
 
     if settings.spotting != SpotLines::Off {
+        // Only lines between men the player can see drawn (decision 75).
+        let drawn = sim.drawn_men(settings.everything);
         for s in &sim.soldiers {
             if settings.spotting == SpotLines::SelectedSquad && selection.squad != Some(s.squad) {
                 continue;
             }
-            for &e in &s.sees {
+            if !drawn[s.id as usize] {
+                continue;
+            }
+            for &e in s.sees.iter().filter(|&&e| drawn[e as usize]) {
                 out.push(Stroke {
                     kind: StrokeKind::Spotting(s.side),
                     points: vec![link.drawn_position(s.id as usize), link.drawn_position(e as usize)],

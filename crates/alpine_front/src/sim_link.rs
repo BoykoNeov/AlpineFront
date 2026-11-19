@@ -1,6 +1,7 @@
 //! Runs the simulation at the chosen game speed and keeps what the view needs from it.
 
 use crate::Options;
+use alpine_sim::raid::RaidNews;
 use alpine_sim::replay::{Recorder, Replay};
 use alpine_sim::scenario;
 use alpine_sim::sim::{Event, Sim, make_pool};
@@ -128,12 +129,15 @@ impl SimLink {
                 };
                 // Carrying parties, cold and hunger: in the game as played, not in --autoplay.
                 let supply_toml = if name == scenario::STEP2 { alpine_sim::supply::load_text()? } else { String::new() };
-                // Falling snow likewise (decisions 57 to 67).
+                // Falling snow likewise (decisions 57 to 67), and the night raid (decisions 69 to 75).
                 let snow_toml = if name == scenario::STEP2 { alpine_sim::snow::load_text()? } else { String::new() };
+                let raid_toml = if name == scenario::STEP2 { alpine_sim::raid::load_text()? } else { String::new() };
                 let rec = Recorder::new(name, o.seed, terrain.fingerprint(), &tuning_toml, &weather_toml, &places_toml)
                     .with_supply(&supply_toml)
-                    .with_snow(&snow_toml);
-                let sim = scenario::build(name, terrain, tuning, o.seed, pool, &weather_toml, &places_toml, &supply_toml, &snow_toml)?;
+                    .with_snow(&snow_toml)
+                    .with_raid(&raid_toml);
+                let sim =
+                    scenario::build(name, terrain, tuning, o.seed, pool, &weather_toml, &places_toml, &supply_toml, &snow_toml, &raid_toml)?;
                 (sim, name.to_string(), Some(rec), None)
             }
         };
@@ -145,6 +149,14 @@ impl SimLink {
             sn.loose.fill(cm);
             sn.untrodden = cm;
             sn.for_routes = Arc::new(sn.loose.clone());
+            recorder = None;
+        }
+        // For checks: the raiders set out at once against the nearest post facing their trench.
+        // Not something the game does by itself, so nothing is recorded.
+        if o.raid_now {
+            if let Some(&post) = sim.posts_facing_trench().first() {
+                sim.force_raid(post);
+            }
             recorder = None;
         }
         // Fast-forward if asked (recorded like any other ticks).
@@ -233,6 +245,7 @@ impl SimLink {
                 }
                 Event::Arrived { squad } => format!("{when}: squad {squad} has arrived."),
                 Event::Unreachable { squad } => format!("{when}: squad {squad} cannot get where it was sent."),
+                Event::Raid(news) => raid_message(&self.sim, &when, news),
                 Event::Dusk => continue,
             };
             if self.auto_carry_on {
@@ -279,6 +292,31 @@ impl SimLink {
 
     pub fn max_speed(&self) -> u32 {
         self.sim.tuning.time.max_speed
+    }
+}
+
+/// What the player is told of the night raid (decisions 71 and 75).
+fn raid_message(sim: &Sim, when: &str, news: &RaidNews) -> String {
+    match news {
+        RaidNews::Word { post, how } => {
+            let place = sim.places.get(*post).map(|p| p.name.as_str()).unwrap_or("line");
+            format!("{when}: ALARM at the {place}: the enemy is at our wire. Word came by {}.", how.words())
+        }
+        RaidNews::Over => {
+            let Some(r) = &sim.raid else { return format!("{when}: the raid is over.") };
+            let rec = &r.record;
+            format!(
+                "{when}: the raid is over. Taken prisoner: {}; killed or hit: {}; prisoners freed: {}; raiders hit: {}.",
+                rec.taken.len(),
+                rec.killed.len() + rec.hit_ours.len(),
+                rec.freed,
+                rec.raiders_hit
+            )
+        }
+        RaidNews::Missing { squads } => {
+            let parts: Vec<String> = squads.iter().map(|(q, n)| format!("{n} from squad {q}")).collect();
+            format!("{when}: at the change of shift men are missing ({}): taken or killed in the night without anyone hearing.", parts.join(", "))
+        }
     }
 }
 

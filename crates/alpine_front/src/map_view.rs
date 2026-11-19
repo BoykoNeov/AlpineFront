@@ -12,7 +12,8 @@ use crate::orders::{Clicks, CursorOverride};
 use crate::overlays::{Stroke, StrokeKind, Strokes};
 use crate::sim_link::SimLink;
 use crate::terrain_view::{FLAG_CONTOURS, TerrainHandles, TerrainSettings, spawn_terrain};
-use crate::units::{Selection, seen_by_enemy};
+use crate::overlays::OverlaySettings;
+use crate::units::{Selection, fallen_shown, seen_by_enemy};
 use crate::view::{MapCam, ViewMode, map_layer};
 use alpine_sim::sim::Side;
 use alpine_sim::terrain::Terrain;
@@ -119,6 +120,9 @@ struct Inks {
     italy: Handle<ColorMaterial>,
     italy_seen: Handle<ColorMaterial>,
     selected: Handle<ColorMaterial>,
+    /// A man taken prisoner; men hit in the raid, lying where they fell.
+    captive: Handle<ColorMaterial>,
+    fallen: Handle<ColorMaterial>,
 }
 
 impl Inks {
@@ -279,6 +283,8 @@ fn spawn_map(
         italy: colours.add(ink(Side::Italy)),
         italy_seen: colours.add(lighter(ink(Side::Italy))),
         selected: colours.add(Color::srgb(0.9, 0.62, 0.0)),
+        captive: colours.add(Color::srgb(0.98, 0.97, 0.92)),
+        fallen: colours.add(Color::srgb(0.35, 0.3, 0.26)),
     };
     let dark = colours.add(INK_DARK);
 
@@ -446,18 +452,21 @@ fn place_camera(view: Res<MapView>, camera: Single<(&mut Transform, &mut Project
 
 /// A squad's flag stands at the middle of its men.
 pub fn squad_anchor(link: &SimLink, squad: u32) -> Option<(f32, f32)> {
+    squad_anchor_of(link, squad, None)
+}
+
+/// The middle of the squad's men that are drawn (`drawn`, from `Sim::drawn_men`; all when None).
+/// None when none of them is.
+pub fn squad_anchor_of(link: &SimLink, squad: u32, drawn: Option<&[bool]>) -> Option<(f32, f32)> {
     let q = link.sim.squads.get(squad as usize)?;
-    if q.members.is_empty() {
-        return None;
-    }
-    let (mut x, mut y) = (0.0, 0.0);
-    for &m in &q.members {
+    let (mut x, mut y, mut n) = (0.0, 0.0, 0.0);
+    for &m in q.members.iter().filter(|&&m| drawn.is_none_or(|d| d[m as usize])) {
         let (mx, my) = link.drawn_position(m as usize);
         x += mx;
         y += my;
+        n += 1.0;
     }
-    let n = q.members.len() as f32;
-    Some((x / n, y / n))
+    (n > 0.0).then(|| (x / n, y / n))
 }
 
 fn place_men(
@@ -466,6 +475,7 @@ fn place_men(
     link: Res<SimLink>,
     selection: Res<Selection>,
     inks: Res<Inks>,
+    settings: Res<OverlaySettings>,
     mut q: Query<(&ManDot, &mut Transform, &mut Visibility, &mut MeshMaterial2d<ColorMaterial>)>,
 ) {
     let show = *mode == ViewMode::Map && view.shows_men();
@@ -477,12 +487,14 @@ fn place_men(
     }
     let sim = &link.sim;
     let seen = seen_by_enemy(&link);
+    let drawn = sim.drawn_men(settings.everything);
+    let fallen = fallen_shown(&link, settings.everything);
     // At least 2.5 pixels across, or a man's true width when zoomed right in.
     let radius = (2.5 * view.scale).max(0.35);
     for (m, mut tf, mut vis, mut mat) in &mut q {
         let i = m.0 as usize;
         let s = &sim.soldiers[i];
-        if sim.squads[s.squad as usize].inside || s.gone.is_some() {
+        if !drawn[i] && !fallen[i] {
             vis.set_if_neq(Visibility::Hidden);
             continue;
         }
@@ -490,30 +502,39 @@ fn place_men(
         tf.translation = Vec3::new(x, y, 2.0);
         tf.scale = Vec3::splat(radius);
         vis.set_if_neq(Visibility::Visible);
-        let want = inks.pick(s.side, seen[i], selection.squad == Some(s.squad));
+        let want = if fallen[i] {
+            &inks.fallen
+        } else if sim.raid.as_ref().is_some_and(|r| r.captive(i as u32)) {
+            &inks.captive
+        } else {
+            inks.pick(s.side, seen[i], selection.squad == Some(s.squad))
+        };
         if mat.0 != *want {
             mat.0 = want.clone();
         }
     }
 }
 
+#[allow(clippy::too_many_arguments)] // a Bevy system: each argument is a piece of game state it reads
 fn place_flags(
     mode: Res<ViewMode>,
     view: Res<MapView>,
     link: Res<SimLink>,
     selection: Res<Selection>,
     inks: Res<Inks>,
+    settings: Res<OverlaySettings>,
     mut flags: Query<(&SquadFlag, &mut Transform, &mut Visibility)>,
     mut cloths: Query<(&FlagCloth, &mut MeshMaterial2d<ColorMaterial>)>,
 ) {
     let show = *mode == ViewMode::Map && !view.shows_men();
+    let drawn = if show { link.sim.drawn_men(settings.everything) } else { Vec::new() };
     for (f, mut tf, mut vis) in &mut flags {
         // A squad inside a shelter shows only in the shelter's name ("3 squads inside").
         if !show || link.sim.squads[f.0 as usize].inside {
             vis.set_if_neq(Visibility::Hidden);
             continue;
         }
-        match squad_anchor(&link, f.0) {
+        match squad_anchor_of(&link, f.0, Some(&drawn)) {
             Some((x, y)) => {
                 tf.translation.x = x;
                 tf.translation.y = y;

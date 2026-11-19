@@ -7,6 +7,7 @@
 pub mod flow;
 pub mod hash;
 pub mod los;
+pub mod raid;
 pub mod replay;
 pub mod report;
 pub mod roster;

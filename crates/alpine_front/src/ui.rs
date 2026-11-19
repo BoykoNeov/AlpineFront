@@ -8,6 +8,7 @@ use crate::places_view::FreeArea;
 use crate::sim_link::{OnEvent, ReplayStatus, SPEEDS, SimLink};
 use crate::units::Selection;
 use crate::view::ViewMode;
+use alpine_sim::raid::Instruction;
 use alpine_sim::report::morning_report;
 use alpine_sim::roster::{self, Duty, PlaceKind};
 use alpine_sim::supply::{CarryLeg, Stock};
@@ -267,6 +268,24 @@ fn roster_table(ui: &mut egui::Ui, link: &mut SimLink, selection: &mut Selection
     }
 }
 
+/// The standing instruction for the night posts (decision 73): one choice for all of them. Given
+/// as an order, so it is recorded for the replay.
+fn instruction_choice(ui: &mut egui::Ui, link: &mut SimLink) {
+    let Some(current) = link.sim.instruction_shown() else { return };
+    ui.strong("Night posts, if men come at them");
+    ui.small("Only men coming at a post (within about 150 m and getting closer). Anyone else in sight is watched and reported.");
+    let mut chosen = None;
+    for i in Instruction::ALL {
+        if ui.radio(current == i, i.words()).on_hover_text(i.explain()).clicked() && current != i {
+            chosen = Some(i);
+        }
+    }
+    ui.small(current.explain());
+    if let Some(instruction) = chosen {
+        link.sim.order(Order::SetInstruction { instruction });
+    }
+}
+
 /// The dawn orders screen (decision 32): the morning report, the work roster and "Carry on".
 fn dawn_window(ctx: &egui::Context, link: &mut SimLink, selection: &mut Selection) {
     let Some(report) = morning_report(&link.sim) else {
@@ -297,6 +316,11 @@ fn dawn_window(ctx: &egui::Context, link: &mut SimLink, selection: &mut Selectio
                 egui::ScrollArea::vertical().max_height(330.0).show(ui, |ui| {
                     roster_table(ui, link, selection, "dawn_roster");
                 });
+            }
+            if link.sim.instruction_shown().is_some() {
+                ui.separator();
+                instruction_choice(ui, link);
+                ui.small("Same as yesterday unless you change it.");
             }
             ui.separator();
             ui.horizontal(|ui| {
@@ -401,6 +425,10 @@ pub fn panels(
                 egui::CollapsingHeader::new("Work roster").default_open(false).show(ui, |ui| {
                     ui.small("Change any squad's duties at any time; squads change over by themselves at dusk and dawn.");
                     roster_table(ui, &mut link, &mut selection, "side_roster");
+                    if link.sim.instruction_shown().is_some() {
+                        ui.separator();
+                        instruction_choice(ui, &mut link);
+                    }
                 });
                 ui.separator();
             }
@@ -438,6 +466,10 @@ pub fn panels(
             }
             if link.sim.snow.is_some() {
                 ui.checkbox(&mut o.snow, "Fresh snow and the tracks packed in it");
+            }
+            if link.sim.raid.is_some() {
+                ui.checkbox(&mut o.everything, "Show every man, hidden raiders too (for checking only)")
+                    .on_hover_text("Raiders are normally shown only once word of the raid reaches the command post, and then only while our men can see them.");
             }
 
             ui.separator();

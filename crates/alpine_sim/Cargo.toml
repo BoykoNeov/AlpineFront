@@ -40,3 +40,9 @@ harness = false
 [[test]]
 name = "snow"
 harness = false
+
+# The night-raid tests (docs/scenario-tests.md, 45 to 49), awaiting the director's approval.
+# Run with: cargo test --release -p alpine_sim --test raid
+[[test]]
+name = "raid"
+harness = false

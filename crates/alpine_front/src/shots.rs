@@ -31,6 +31,7 @@ fn apply_options(options: Res<Options>, link: Res<SimLink>, mut overlays: ResMut
                 "noplaces" => overlays.places = false,
                 "nospotting" => overlays.spotting = SpotLines::Off,
                 "squadspotting" => overlays.spotting = SpotLines::SelectedSquad,
+                "everything" => overlays.everything = true,
                 _ => warn!("unknown overlay '{item}'"),
             }
         }

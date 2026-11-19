@@ -6,7 +6,8 @@
 //!    - the heaviest load: the step-2 scenario from noon on Monday (full daylight, the heaviest
 //!      sight work) with every squad moving on random orders;
 //!    - the game as played: the work roster across Monday's dusk, when every rostered squad changes
-//!      over at once and plans its walk to its new place.
+//!      over at once and plans its walk to its new place, with a night raid under way (the raiders
+//!      set out at the start of the run: creeping up, flares, shooting, struggles, escorts).
 //!
 //!    Each times every update at the fastest game speed in real time: the updates falling in each
 //!    1/60 s of real time (one frame) must together use no more than half of it (decision 30).
@@ -207,7 +208,7 @@ fn frame_check(view: &str, top: f64) -> Result<(FrameVerdict, String), String> {
         return Err(format!("{} not found: run `cargo build --release --workspace` first", exe.display()));
     }
     let out = Command::new(&exe)
-        .args(["--frame-check", &FRAME_CHECK_SECONDS.to_string(), "--view", view, "--snowing", "40"])
+        .args(["--frame-check", &FRAME_CHECK_SECONDS.to_string(), "--view", view, "--snowing", "40", "--raid-now"])
         .output()
         .map_err(|e| format!("could not start the game: {e}"))?;
     let text = String::from_utf8_lossy(&out.stdout);
@@ -284,6 +285,7 @@ fn main() {
     // every walk works through it, packs it and routes around it. The diary has no snow falling on
     // Monday, so the light, and with it the line-of-sight work, stays at its heaviest.
     let snow_toml = alpine_sim::snow::load_text().expect("snow file");
+    let raid_toml = alpine_sim::raid::load_text().expect("raid file");
     let with_snow = |sim: &mut Sim| {
         sim.start_snow(alpine_sim::snow::SnowFile::from_toml(&snow_toml).expect("snow file")).expect("snow");
         let sn = sim.snow.as_mut().expect("snow");
@@ -323,6 +325,8 @@ fn main() {
         if let Some(q) = sim.squads.iter().find(|q| q.roster == Some(resting)).map(|q| q.id) {
             sim.order(Order::SetRoster { squad: q, day: Duty::Carry, night: Duty::Carry });
         }
+        // The night raid file in force (decisions 69 to 75), as played.
+        sim.start_raid(alpine_sim::raid::RaidFile::from_toml(&raid_toml).expect("raid file")).expect("raid");
         (sim, at)
     };
     let ticks = (SIM_CHECK_MINUTES * 60.0 * tps) as u64;
@@ -365,9 +369,14 @@ fn main() {
         h.over
     );
 
-    // Run 2: the roster game across dusk.
+    // Run 2: the roster game across dusk, with a raid under way: the raiders set out at once against
+    // the nearest post facing their trench (decision 75's speed pass).
     let (mut sim, at) = roster_game(DUSK_LEAD_MINUTES * 60.0);
+    if let Some(&post) = sim.posts_facing_trench().first() {
+        sim.force_raid(post);
+    }
     let t = time_ticks(&mut sim, ticks, budget, Some(per_tick_ms));
+    let raid_seen = sim.raid.as_ref().map(|r| r.record.clone()).unwrap_or_default();
     let roster_pass = t.frames_over == 0 && t.dusk_frame.is_some();
     // The busiest frame in the two game minutes after dusk, while the squads plan their walks.
     let after_dusk = t.dusk_frame.map(|f| {
@@ -376,10 +385,14 @@ fn main() {
     });
     println!();
     println!(
-        "{} Simulation, the game as played: the work roster, with 40 cm of fresh snow lying, from {at} on Monday, {SIM_CHECK_MINUTES} game minutes run at \
+        "{} Simulation, the game as played: the work roster, with 40 cm of fresh snow lying and a night raid under way ({} shots, {} flares, {} struggles, {} of ours taken), from {at} on Monday, {SIM_CHECK_MINUTES} game minutes run at \
          {top}x speed in real time. Of {} frames, 99% used within {:.2} ms, the busiest {:.2} ms; {} frames over the \
          {:.2} ms limit. {} Single updates, for information: typical {:.3} ms, slowest {:.3} ms.",
         if roster_pass { "PASS" } else { "FAIL" },
+        raid_seen.shots,
+        raid_seen.flares,
+        raid_seen.struggles,
+        raid_seen.taken.len(),
         t.frames,
         t.frame_p99,
         t.frame_max,

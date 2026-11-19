@@ -125,3 +125,22 @@ building and approved by the director afterwards, the same day.
 | 44 | **Every switch, turned off, gives the game without its rule.** Snowfall off plays exactly as no snow file; snowshoes off exactly as nobody having them; with trail breaking off nobody packs snow; with slowing off a walk takes exactly as long as on bare ground; with routes off routes come from the ground alone; with sight off snow does not shorten sight; with the forecast off there is none. Tiredness off: nobody tires. Cold off: nobody grows cold and no fuel burns. Hunger off: nobody grows hungry and no food is eaten. Carrying off: a squad set to carry rests. |
 
 Run them with `cargo test --release -p alpine_sim --test snow`.
+
+## Step 2: the night raid (awaiting the director's approval)
+
+The enemy officer, the raiders, word passing to the command post, flares, crude shooting, the
+snatch and the escort back (decisions 69 to 75). Numbers live in `data/raid.toml`. Tests 1 to 44
+run without the raid file, so there is no raid for them and the Italians never tire. These tests
+cover the lasting rules only (decision 56): how many men a raid costs either side is a matter of
+numbers, judged by playing. Drafted by Claude while building; not locked until the director
+approves them.
+
+| # | Expectation |
+| --- | --- |
+| 45 | **Every raid switch, turned off, gives the game without its rule.** The raid off plays exactly as no raid file. Officer's choice off: the raid comes on the night and at the time the file sets. Italian tiredness off: no Italian tires. Whispered orders off: every raider hears every order at once. Muffled shouts off: a shout carries as far in any weather. Hearing off: nobody notices a man beyond his sight. Flares off: no flare goes up. Shooting off: nobody fires. Cover off: a man in a post is as easy to hit as in the open. Standing instruction off: every post shouts first. Command-post rule off: a raider shows the moment one of our men sees him. Struggle off: no struggle starts. Freeing off: no prisoner goes free. Close-combat ability off: every man is ordinary. Shelters waking off: the shelters sleep through gunfire. |
+| 46 | **A prisoner who reaches the trench is lost.** Each man the raiders take back to their trench leaves his squad and is counted among the company's losses as taken prisoner. |
+| 47 | **Nothing is known until word reaches the command post.** While our men can see raiders but word has not yet reached the command post, no raider is drawn and the player is told nothing of them; once word arrives, the raiders our men can see are shown. |
+| 48 | **Both sides see alike.** An Austro-Hungarian and an Italian equally tired see each other at the same distance, on a clear night, in heavy snow, and by hearing at arm's reach. |
+| 49 | **Replays with a raid match.** A game from Monday's first light through a raid, with the standing instruction changed once, saved, loaded and played back, matches exactly. |
+
+Run them with `cargo test --release -p alpine_sim --test raid`.

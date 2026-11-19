@@ -56,16 +56,16 @@ pub fn morning_report(sim: &Sim) -> Option<MorningReport> {
     // Squads whose men are all lost are not counted.
     let ours: Vec<_> = sim.squads.iter().filter(|q| q.side == PLAYER_SIDE && !q.members.is_empty()).collect();
     let men: usize = ours.iter().map(|q| q.members.len()).sum();
-    match &sim.supply {
-        Some(sup) if !sup.lost.is_empty() => {
-            let frost = sup.lost.iter().filter(|l| l.why == Lost::Frostbite).count();
-            let dead = sup.lost.len() - frost;
-            events.push(format!(
-                "The company: {men} men in {} squads; lost since the first morning: {frost} sent down with frostbite, {dead} dead.",
-                ours.len()
-            ));
+    if sim.lost.is_empty() {
+        events.push(format!("The company: {men} men in {} squads, all present.", ours.len()));
+    } else {
+        let n = |why: Lost| sim.lost.iter().filter(|l| l.why == why).count();
+        let mut parts = vec![format!("{} sent down with frostbite", n(Lost::Frostbite)), format!("{} dead of the cold", n(Lost::Died))];
+        if sim.raid.is_some() {
+            parts.push(format!("{} killed or wounded by the enemy", n(Lost::Hit)));
+            parts.push(format!("{} taken prisoner", n(Lost::Taken)));
         }
-        _ => events.push(format!("The company: {men} men in {} squads, all present.", ours.len())),
+        events.push(format!("The company: {men} men in {} squads; lost since the first morning: {}.", ours.len(), parts.join(", ")));
     }
 
     let Some((prev_i, prev_tick, _)) = previous else {
@@ -137,10 +137,67 @@ pub fn morning_report(sim: &Sim) -> Option<MorningReport> {
         let line = c.next().map(|f| f.to_uppercase().collect::<String>() + c.as_str()).unwrap_or_default();
         events.push(format!("{line}."));
     }
+    raid_lines(sim, prev_tick, &mut events);
     supply_lines(sim, Some(prev_tick), &mut events);
     snow_lines(sim, Some(prev_tick), &mut events);
     roster_lines(sim, &mut events);
     Some(MorningReport { title, weather, events })
+}
+
+/// "1 man" / "3 men".
+fn men_count(n: usize) -> String {
+    if n == 1 { "1 man".into() } else { format!("{n} men") }
+}
+
+/// The night raid's part of the report (decisions 69 to 75), when the raiders set out since the
+/// previous dawn.
+fn raid_lines(sim: &Sim, since_tick: u64, events: &mut Vec<String>) {
+    let Some(r) = &sim.raid else { return };
+    let rec = &r.record;
+    let Some(out) = rec.set_out.filter(|&t| t > since_tick) else { return };
+    let dt = sim.tuning.dt() as f64;
+    let Some(cal) = sim.clock.as_ref().map(|c| &c.calendar) else { return };
+    let time_of = |tick: u64| cal.now(tick as f64 * dt).hhmm();
+    let post = rec.post.map(|p| sim.places[p].name.clone()).unwrap_or_default();
+    let heard = match rec.word {
+        Some((t, how)) => format!("word reached the command post at {} by {}", time_of(t), how.words()),
+        None => "nobody heard it: the losses were found at the change of shift".into(),
+    };
+    events.push(format!("Night raid: Italians came up from their trench toward the {post} at about {}; {heard}.", time_of(out)));
+    let squads = |v: &[(u32, u32)]| {
+        let mut ids: Vec<u32> = v.iter().map(|x| x.1).collect();
+        ids.sort_unstable();
+        ids.dedup();
+        squad_list(&ids)
+    };
+    let mut lines = Vec::new();
+    if !rec.taken.is_empty() {
+        lines.push(format!("{} taken prisoner ({})", men_count(rec.taken.len()), squads(&rec.taken)));
+    }
+    if !rec.killed.is_empty() {
+        lines.push(format!("{} killed in the struggle ({})", men_count(rec.killed.len()), squads(&rec.killed)));
+    }
+    if !rec.hit_ours.is_empty() {
+        lines.push(format!("{} hit by their fire ({})", men_count(rec.hit_ours.len()), squads(&rec.hit_ours)));
+    }
+    if rec.freed > 0 {
+        lines.push(format!("{} freed when the escort was shot", men_count(rec.freed as usize)));
+    }
+    if lines.is_empty() {
+        events.push("Nobody of ours was lost.".into());
+    } else {
+        let mut l = lines.join("; ");
+        if let Some(f) = l.get_mut(0..1) {
+            f.make_ascii_uppercase();
+        }
+        events.push(format!("{l}."));
+    }
+    if rec.raiders_hit > 0 {
+        events.push(format!("{} of the raiders {} hit; the bodies of those left behind lay before the post until first light.", rec.raiders_hit, if rec.raiders_hit == 1 { "was" } else { "were" }));
+    }
+    if rec.shots + rec.flares > 0 {
+        events.push(format!("{} shots were fired and {} flares sent up.", rec.shots, rec.flares));
+    }
 }
 
 /// Falling snow's part of the report (decisions 57 to 67): what fell, what lies, who has snowshoes.

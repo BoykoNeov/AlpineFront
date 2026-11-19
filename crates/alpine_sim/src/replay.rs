@@ -15,8 +15,9 @@ use std::sync::Arc;
 /// 3: step 2 has the work roster, and the replay keeps the places file (`places_toml`).
 /// 4: step 2 has carrying, cold and hunger, and the replay keeps the supply file (`supply_toml`).
 /// 5: step 2 has falling snow, and the replay keeps the snow file (`snow_toml`).
+/// 6: step 2 has the night raid, and the replay keeps the raid file (`raid_toml`).
 /// Older step-1 replays still play (step 1 did not change); older step-2 replays are refused.
-pub const FORMAT: u32 = 5;
+pub const FORMAT: u32 = 6;
 /// A checksum is recorded every this many ticks.
 pub const CHECK_EVERY: u64 = 10;
 
@@ -46,6 +47,10 @@ pub struct Replay {
     /// otherwise, which means no snow).
     #[serde(default)]
     pub snow_toml: String,
+    /// The raid file's text at the time of recording (the step-2 game, from format 6; empty
+    /// otherwise, which means no raid).
+    #[serde(default)]
+    pub raid_toml: String,
     /// How many ticks were recorded.
     pub ticks: u64,
     pub orders: Vec<LoggedOrder>,
@@ -72,6 +77,7 @@ impl Recorder {
                 places_toml: places_toml.to_string(),
                 supply_toml: String::new(),
                 snow_toml: String::new(),
+                raid_toml: String::new(),
                 ticks: 0,
                 orders: Vec::new(),
                 checksums: Vec::new(),
@@ -88,6 +94,12 @@ impl Recorder {
     /// Records the snow file the game was started with (the step-2 game).
     pub fn with_snow(mut self, snow_toml: &str) -> Self {
         self.replay.snow_toml = snow_toml.to_string();
+        self
+    }
+
+    /// Records the raid file the game was started with (the step-2 game).
+    pub fn with_raid(mut self, raid_toml: &str) -> Self {
+        self.replay.raid_toml = raid_toml.to_string();
         self
     }
 
@@ -128,7 +140,7 @@ impl Replay {
         if r.format != FORMAT && !old_step1 {
             return Err(format!(
                 "replay format {} not supported (expected {FORMAT}); replays saved before the map or game changed cannot be played \
-                 (step-2 replays from before the work roster, carrying, cold and hunger, or falling snow, included)",
+                 (step-2 replays from before the work roster, carrying, cold and hunger, falling snow or the night raid, included)",
                 r.format
             ));
         }
@@ -151,6 +163,7 @@ impl Replay {
             &self.places_toml,
             &self.supply_toml,
             &self.snow_toml,
+            &self.raid_toml,
         )?;
         for o in &self.orders {
             sim.schedule(o.clone());

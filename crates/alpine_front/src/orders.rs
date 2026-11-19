@@ -2,7 +2,7 @@
 //! the ground without dragging sends the selected Austro-Hungarian squad there. Only finding what is
 //! under the cursor differs between the 3D view and the map.
 
-use crate::map_view::{FLAG_PICK_OFFSET_PX, MapView, squad_anchor};
+use crate::map_view::{FLAG_PICK_OFFSET_PX, MapView, squad_anchor_of};
 use crate::sim_link::SimLink;
 use crate::terrain_view::{ground_hit, to_world};
 use crate::units::{Selection, marker_scale};
@@ -43,7 +43,8 @@ fn pick_terrain(link: &SimLink, (camera, cam_tf): Cam, cursor: Vec2) -> Option<u
     let sim = &link.sim;
     let cam_pos = cam_tf.translation();
     let mut best: Option<(u32, f32)> = None;
-    for s in sim.soldiers.iter().filter(|s| !sim.squads[s.squad as usize].inside) {
+    let drawn = sim.drawn_men(false);
+    for s in sim.soldiers.iter().filter(|s| drawn[s.id as usize]) {
         let (x, y) = link.drawn_position(s.id as usize);
         let ground = to_world(x, y, sim.terrain.height(x, y));
         let centre = ground + Vec3::Y * 0.8 * marker_scale(cam_pos.distance(ground));
@@ -62,8 +63,9 @@ fn pick_terrain(link: &SimLink, (camera, cam_tf): Cam, cursor: Vec2) -> Option<u
 fn pick_map(link: &SimLink, map: &MapView, (camera, cam_tf): Cam, cursor: Vec2) -> Option<u32> {
     let sim = &link.sim;
     let mut best: Option<(u32, f32)> = None;
+    let drawn = sim.drawn_men(false);
     if map.shows_men() {
-        for s in sim.soldiers.iter().filter(|s| !sim.squads[s.squad as usize].inside) {
+        for s in sim.soldiers.iter().filter(|s| drawn[s.id as usize]) {
             let (x, y) = link.drawn_position(s.id as usize);
             if let Ok(p) = camera.world_to_viewport(cam_tf, Vec3::new(x, y, 0.0)) {
                 let d = p.distance(cursor);
@@ -74,11 +76,11 @@ fn pick_map(link: &SimLink, map: &MapView, (camera, cam_tf): Cam, cursor: Vec2) 
         }
     } else {
         for q in sim.squads.iter().filter(|q| !q.inside) {
-            let Some((x, y)) = squad_anchor(link, q.id) else { continue };
+            let Some((x, y)) = squad_anchor_of(link, q.id, Some(&drawn)) else { continue };
             if let Ok(p) = camera.world_to_viewport(cam_tf, Vec3::new(x, y, 0.0)) {
                 let d = (p + FLAG_PICK_OFFSET_PX).distance(cursor);
                 if d < PICK_PX && best.is_none_or(|(_, bd)| d < bd) {
-                    best = Some((q.members[0], d));
+                    best = Some((q.members.iter().copied().find(|&m| drawn[m as usize]).unwrap_or(q.members[0]), d));
                 }
             }
         }

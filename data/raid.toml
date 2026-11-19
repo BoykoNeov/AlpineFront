@@ -1,0 +1,208 @@
+# The night raid (decisions 69 to 75): an Italian raiding party, the enemy officer who picks its night,
+# how word passes on the summit, crude shooting, the snatch at a post and the escort back.
+#
+# Plain values, safe to edit. Without this file (the locked tests 1 to 44) there is no raid, and the
+# Italians never tire. Replays keep a copy of the file they were recorded with.
+#
+# Every number here is Claude's estimate, approved by the director as a starting point on 2026-11-19
+# (decision 75), unless it says otherwise. The shooting and the struggle are crude step-2 rules that
+# the fire-and-morale step (step 3) replaces.
+
+# ---- On/off switches (decision 65) -----------------------------------------------------------------
+# Switched off, the game behaves as if that part had never been built.
+[switches]
+# The raid itself. Off: exactly as without this file (no raiders, no Italian tiredness).
+raid = true
+# The enemy officer chooses the night. Off: the raid comes on the night set in [officer] below.
+officer_picks_night = true
+# The Italians tire under the same rule as our men.
+italians_tire = true
+# The raiders' officer whispers until the alarm is up, so only men near him hear his orders. Off:
+# every raider hears every order at once.
+whispered_orders = true
+# Falling snow shortens how far a shout carries. Off: a shout carries as far in any weather.
+snow_muffles_shouts = true
+# An awake man always notices someone moving close to him, whatever the light.
+hearing = true
+# Guards send up flares.
+flares = true
+# Shots can hit. Off: nobody fires at all.
+shooting = true
+# A man in a lookout post is harder to hit.
+cover_at_posts = true
+# The player's standing instruction for the night posts. Off: every post shouts first.
+standing_instruction = true
+# The player hears of the raid only when word reaches the command post. Off: the player hears at
+# the first sighting of a raider, as with any other enemy.
+word_must_reach_command_post = true
+# Two raiders reaching a guard start a struggle whose odds depend on surprise and close-combat
+# ability. Off: the guard is taken at once.
+struggle = true
+# A prisoner whose escort is hit goes free. Off: he is taken whatever happens to his escort.
+escort_can_be_freed = true
+# Each man has a close-combat ability. Off: every man is ordinary.
+close_combat_ability = true
+# Gunfire wakes the men asleep in the shelters, who stand ready inside until the raid is over.
+shelters_wake = true
+
+# ---- The Italian front trench ------------------------------------------------------------------------
+# Period sources put the Italian front line only tens of metres below the summit in early 1916; no
+# source found gives the exact spot. This line was read from the terrain by Claude: the nearest
+# ground below the South and South-east posts that a man can stand on (the south-west slope right
+# below the posts is a rock band too steep to stand on in the game's map). Metres from the summit,
+# x east, y north. The raiders wait in it, hidden, until they set out.
+[trench]
+name = "Italian front trench"
+from = [10.0, -122.0]
+to = [90.0, -118.0]
+source = "Italian line tens of metres below the summit: period accounts; spot read from the terrain"
+
+# ---- The command post --------------------------------------------------------------------------------
+# Where the company commander is: word of the raid reaches the player when it reaches here. No source
+# gives its spot; placed at the mouth of the great cavern by Claude.
+[command_post]
+name = "Command post"
+x = 0.0
+y = 34.0
+source = "spot chosen by Claude: the mouth of the great cavern"
+
+# ---- The raiding party -------------------------------------------------------------------------------
+[raiders]
+squads = 3
+men_per_squad = 10
+# Shares of a man's walking speed. Creeping applies within creep_within_m of the post until the
+# alarm is up; farther out the raiders walk quietly.
+creeping_pace = 0.35
+creep_within_m = 40.0
+running_pace = 1.3
+escort_pace = 0.6
+# A raider goes straight for one of our men he notices within this distance.
+go_for_within_m = 15.0
+
+# ---- The enemy officer -------------------------------------------------------------------------------
+[officer]
+# Nights are counted from the first: Monday night is 0, Saturday night 5. He does not go before
+# first_night and always goes on last_night.
+first_night = 1
+last_night = 5
+# His chance of going tonight: clear sky to overcast, in between by the cloud.
+chance_clear = 0.15
+chance_overcast = 0.35
+# Added when his forecast says snow tonight, or heavy snow.
+snow_forecast_bonus = 0.25
+heavy_snow_forecast_bonus = 0.40
+# Added when a post facing him shows fewer than this share of its usual men.
+weak_post_bonus = 0.20
+weak_below_share = 0.5
+usual_men_at_post = 10
+# Added for each night after the first he may go.
+per_later_night = 0.05
+# He counts the men at the posts facing his trench this long after dusk, as the night guards stand.
+count_minutes_after_dusk = 15.0
+# Posts this close to the middle of his trench face it.
+facing_within_m = 120.0
+# He sets out at a time between these, the next morning (24-hour clock).
+sets_out_from = "02:00"
+sets_out_until = "03:30"
+# With officer_picks_night switched off: the night and time of the raid.
+fixed_night = 3
+fixed_time = "02:30"
+
+# ---- Hearing at arm's reach --------------------------------------------------------------------------
+[hearing]
+# An awake man notices someone moving within this distance whatever the light; less as he tires,
+# by the same share as his sight (half when exhausted).
+within_m = 5.0
+
+# ---- Voices, shouts and runners ----------------------------------------------------------------------
+[voice]
+# How far a shout carries, by the snow falling: [cm an hour, metres].
+shout_by_snowfall = [[0.0, 50.0], [1.0, 40.0], [4.0, 25.0]]
+# The raiders' officer's whisper.
+whisper_m = 10.0
+# He repeats his order this often, so men coming within earshot hear it.
+repeat_every_s = 10.0
+# After the alarm, a raider who has heard nothing from his officer for this long goes back on his own.
+on_own_after_alarm_minutes = 10.0
+# A raider at the post with nobody to take goes back on his own after this long.
+idle_at_post_minutes = 2.0
+# A runner to the command post: walking speed on bare ground, slowed by fresh snow like any man,
+# and the time to set off.
+runner_mps = 1.5
+runner_start_s = 20.0
+
+# ---- Flares ------------------------------------------------------------------------------------------
+[flares]
+# It bursts this far in front of the post, toward the enemy trench, and lights a circle of this radius
+# (100 m across) for this long.
+burst_ahead_m = 50.0
+radius_m = 50.0
+burns_s = 60.0
+# Inside the circle men are seen as in this light (1 lux is deep twilight: about 500 m in clear air),
+# cut by falling snow as daylight is.
+light_lux = 1.0
+
+# ---- Shooting ----------------------------------------------------------------------------------------
+[shooting]
+seconds_between_shots = 10.0
+# Chance to hit in good light by distance: [metres, chance].
+hit_by_distance = [[10.0, 0.5], [50.0, 0.25], [100.0, 0.12], [200.0, 0.05], [400.0, 0.02]]
+# Nobody fires at a man farther than this (the hold-fire distance, decision 73).
+hold_fire_m = 100.0
+# A guard within this distance of his spot at the post counts as in the post.
+in_post_within_m = 8.0
+post_cover_factor = 0.25
+creeping_factor = 0.5
+exhausted_shooter_factor = 0.7
+
+# ---- The guards and the standing instruction ---------------------------------------------------------
+[guards]
+# The instruction applies to men within this distance of a post and coming closer at least this fast
+# (0.1 m a second: 3 m in half a minute).
+trigger_within_m = 150.0
+closing_mps = 0.1
+# How long a guard takes to act once he notices them.
+react_fresh_s = 5.0
+react_exhausted_s = 20.0
+# "Shout first": flare and fire if they keep coming this long after the challenge, or come this close.
+shout_keep_coming_s = 30.0
+shout_fire_within_m = 50.0
+# "Watch quietly and send word": fire only if they come this close.
+quiet_fire_within_m = 30.0
+# The first morning's instruction: "flare", "shout" or "quiet".
+first_instruction = "shout"
+
+# ---- The struggle ------------------------------------------------------------------------------------
+[struggle]
+# Raiders this close to a guard, at least raiders_needed of them, start a struggle.
+contact_m = 2.0
+raiders_needed = 2
+# How long it lasts, seconds.
+lasts_from_s = 10.0
+lasts_until_s = 30.0
+# A raider's dagger counts this much at arm's reach.
+dagger_factor = 1.5
+# The guard, and each comrade within comrades_within_m who joins in, counts his ability times this
+# when alert, or this when taken by surprise; an exhausted man counts this share of it.
+alert_factor = 2.0
+surprised_factor = 0.5
+exhausted_factor = 0.5
+comrades_within_m = 3.0
+# Of guards overpowered, this share is killed in the scuffle instead of taken.
+killed_share = 0.2
+# Close-combat ability: most men near 1 (ordinary), spread this much either way; raiders this much
+# better on average (picked volunteers).
+ability_spread = 0.25
+raider_ability_bonus = 0.33
+
+# ---- The escort and pulling back ---------------------------------------------------------------------
+[withdrawal]
+# Raiders walking each prisoner back.
+escorts = 2
+# The officer calls his men back at this many prisoners, at one prisoner once the alarm is up, when
+# this share of his men are hit, this long after setting out, or when the alarm goes up while he is
+# still farther than alarm_far_m from the post.
+prisoners_enough = 2
+hit_share = 0.333
+minutes_out = 30.0
+alarm_far_m = 40.0

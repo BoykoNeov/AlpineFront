@@ -119,6 +119,10 @@ pub enum Lost {
     Frostbite,
     /// Died of exposure.
     Died,
+    /// Hit by a shot, or killed in a struggle, in the night raid (decision 72).
+    Hit,
+    /// Taken prisoner by the raiders (decision 74).
+    Taken,
 }
 
 /// A man lost, with the update after which it happened.

@@ -28,6 +28,7 @@
 use crate::flow::FlowField;
 use crate::hash::Checksum;
 use crate::los::{self, LosParams};
+use crate::raid::{Instruction, Raid, RaidNews};
 use crate::rng::Rng;
 use crate::roster::{Duty, Place, PlaceKind, Roster};
 use crate::sky::{self, Calendar, SkyState};
@@ -82,6 +83,8 @@ pub enum Event {
     Arrived { squad: u32 },
     /// A squad the player ordered cannot get where it was sent.
     Unreachable { squad: u32 },
+    /// News of the night raid (decisions 71 and 75).
+    Raid(RaidNews),
 }
 
 impl Event {
@@ -121,6 +124,8 @@ pub enum Order {
     SetRoster { squad: u32, day: Duty, night: Duty },
     /// Send a squad that was sent elsewhere back to its rostered duty now.
     BackToDuty { squad: u32 },
+    /// The standing instruction for the night posts (decision 73; games with the raid file).
+    SetInstruction { instruction: Instruction },
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -156,8 +161,27 @@ pub struct Soldier {
     pub minutes_since_meal: u32,
     /// Game minutes in a row he has been outside at the worst cold.
     pub worst_minutes: u32,
-    /// Lost to the company: sent down with frostbite, or dead. He is out of the game.
+    /// Lost to the company: sent down with frostbite, dead, hit or taken prisoner. He is out of the
+    /// game.
     pub gone: Option<Lost>,
+    /// Out of sight both ways on his own (a raider in his trench; decision 75).
+    pub hidden: bool,
+    /// Going his own way rather than with his squad (raiders, prisoners; decision 75).
+    pub own: Option<OwnMove>,
+}
+
+/// A man going his own way: along a route (or straight) to a goal, at a share of his speed.
+#[derive(Clone)]
+pub struct OwnMove {
+    pub field: Option<Arc<FlowField>>,
+    pub goal: (f32, f32),
+    pub pace: f32,
+}
+
+impl std::fmt::Debug for OwnMove {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "OwnMove {{ goal: {:?}, pace: {}, route: {} }}", self.goal, self.pace, self.field.is_some())
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -282,13 +306,17 @@ pub struct Sim {
     pub supply: Option<Supply>,
     /// Fresh snow on the map, and the forecast (games with the snow file; decisions 57 to 67).
     pub snow: Option<Snow>,
+    /// The night raid (games with the raid file; decisions 69 to 75).
+    pub raid: Option<Raid>,
+    /// Every man of ours lost to the company, in order, whatever the cause.
+    pub lost: Vec<LostMan>,
     rng: Rng,
     pool: Arc<rayon::ThreadPool>,
     scheduled: VecDeque<LoggedOrder>,
     /// Route calculations under way, by squad.
     jobs: BTreeMap<u32, Arc<FieldJob>>,
     grid: SpatialGrid,
-    by_side: [Vec<u32>; 2],
+    pub(crate) by_side: [Vec<u32>; 2],
     formation: Vec<(f32, f32)>,
 }
 
@@ -323,6 +351,8 @@ impl Sim {
             places: Vec::new(),
             supply: None,
             snow: None,
+            raid: None,
+            lost: Vec::new(),
             los: LosParams::from_tuning(&tuning.line_of_sight),
             terrain,
             tuning,
@@ -350,7 +380,7 @@ impl Sim {
     }
 
     /// Notes an event as having happened in the update now running.
-    fn note(&mut self, event: Event) {
+    pub(crate) fn note(&mut self, event: Event) {
         self.journal.push(LoggedEvent { tick: self.tick + 1, event: event.clone() });
         self.events.push(event);
     }
@@ -398,6 +428,8 @@ impl Sim {
                 minutes_since_meal: 0,
                 worst_minutes: 0,
                 gone: None,
+                hidden: false,
+                own: None,
             });
         }
         self.squads.push(Squad {
@@ -571,6 +603,7 @@ impl Sim {
         let slots = self.formation_around(dx, dy, members.len());
         for (k, &m) in members.iter().enumerate() {
             let s = &mut self.soldiers[m as usize];
+            s.own = None;
             s.slot = slots[k];
             s.arrived = false;
             s.waypoint = None;
@@ -855,8 +888,8 @@ impl Sim {
         }
     }
 
-    /// Soldier `i` leaves the company: sent down with frostbite, or dead.
-    fn lose_man(&mut self, i: u32, why: Lost, tick: u64) {
+    /// Soldier `i` leaves the company: sent down with frostbite, dead, hit or taken prisoner.
+    pub(crate) fn lose_man(&mut self, i: u32, why: Lost, tick: u64) {
         let s = &mut self.soldiers[i as usize];
         s.gone = Some(why);
         s.sees.clear();
@@ -873,8 +906,11 @@ impl Sim {
             q.state = SquadState::Idle;
             q.field = None;
         }
-        if let Some(sup) = self.supply.as_mut() {
-            sup.lost.push(LostMan { tick: tick + 1, soldier: i, squad, why });
+        if side == PLAYER_SIDE {
+            if let Some(sup) = self.supply.as_mut() {
+                sup.lost.push(LostMan { tick: tick + 1, soldier: i, squad, why });
+            }
+            self.lost.push(LostMan { tick: tick + 1, soldier: i, squad, why });
         }
     }
 
@@ -963,6 +999,22 @@ impl Sim {
             (Some(sn), Some(c)) => light * sn.tuning.sight_factor(c.weather.snowfall_at(t) as f32, clear),
             _ => light,
         }
+    }
+
+    /// How far a man is spotted now in light `lux` (a flare's, say), cut by the snow falling now.
+    pub(crate) fn sight_in(&self, lux: f64) -> f32 {
+        match &self.clock {
+            Some(c) => self.sight_at(lux, c.calendar.local_seconds(self.game_seconds())),
+            None => sky::spotting_distance(lux, &self.tuning.light, self.tuning.spotting.spotting_range_m),
+        }
+    }
+
+    /// A standing instruction the player has given that has not taken effect yet.
+    pub(crate) fn pending_instruction(&self) -> Option<Instruction> {
+        self.scheduled.iter().rev().find_map(|o| match o.order {
+            Order::SetInstruction { instruction } => Some(instruction),
+            _ => None,
+        })
     }
 
     /// The forecast at a dawn (local time `t`), for the day to 18:00 and the night after to 06:00
@@ -1112,11 +1164,13 @@ impl Sim {
                 self.serve_meal();
                 self.change_shift();
                 self.forecast(t);
+                self.relieve_patrols();
             } else if before > sky::DUSK_ALTITUDE_DEG && sky.sun_altitude_deg <= sky::DUSK_ALTITUDE_DEG {
                 c.night = true;
                 self.note(Event::Dusk);
                 self.serve_meal();
                 self.change_shift();
+                self.relieve_patrols();
             }
         }
 
@@ -1146,6 +1200,13 @@ impl Sim {
                         self.take_up_duty(squad as usize);
                     }
                 }
+                Order::SetInstruction { instruction } => {
+                    if let Some(r) = self.raid.as_mut()
+                        && r.tuning.switches.standing_instruction
+                    {
+                        r.instruction = instruction;
+                    }
+                }
                 Order::BackToDuty { squad } => {
                     if let Some(q) = self.squads.get_mut(squad as usize)
                         && q.roster.is_some()
@@ -1165,10 +1226,12 @@ impl Sim {
         if !self.places.is_empty() && tick.is_multiple_of(minute) {
             let tt = &self.tuning.tiredness;
             let (up, down) = (1.0 / (tt.hours_awake_to_exhausted * 60.0), 1.0 / (tt.hours_asleep_to_fresh * 60.0));
+            // Gunfire in a raid wakes the men in the shelters (decision 75).
+            let standing_to = self.standing_to();
             for &i in &self.by_side[PLAYER_SIDE.index()] {
                 let s = &mut self.soldiers[i as usize];
                 let q = &self.squads[s.squad as usize];
-                let asleep = q.inside;
+                let asleep = q.inside && !standing_to;
                 // With the supply file: cold, hunger and carrying tire a man faster; hunger spoils
                 // his sleep.
                 let (up, down) = match &self.supply {
@@ -1188,8 +1251,9 @@ impl Sim {
                     s.tiredness = if asleep { (s.tiredness - down).max(0.0) } else { (s.tiredness + up).min(1.0) };
                 }
             }
+            self.italian_tiredness_minute(up, down);
             for q in self.squads.iter_mut().filter(|q| q.roster.is_some()) {
-                if q.inside {
+                if q.inside && !standing_to {
                     q.today.sleep_minutes += 1;
                 } else if matches!(q.carry, Some(c) if c != CarryLeg::Done) {
                     q.today.carry_minutes += 1;
@@ -1313,7 +1377,12 @@ impl Sim {
             self.soldiers[i as usize].sees = v;
         }
 
-        // 7. New contacts.
+        // 7. The night raid (decision 75).
+        if self.raid.is_some() {
+            self.raid_step(tick);
+        }
+
+        // 8. New contacts.
         if self.clock.is_some() {
             self.note_contacts(tick);
         }
@@ -1342,9 +1411,14 @@ impl Sim {
         let gap = self.tuning.seconds_to_ticks(self.tuning.events.new_contact_after_unseen_minutes * 60.0);
         // Per enemy squad seen: (distance, our squad) of the nearest sighting.
         let mut nearest: BTreeMap<u32, (f32, u32)> = BTreeMap::new();
+        // Raiders are news only when word reaches the command post (decision 71).
+        let quiet = self.raid.as_ref().filter(|r| r.tuning.switches.word_must_reach_command_post);
         for &i in &self.by_side[PLAYER_SIDE.index()] {
             let s = &self.soldiers[i as usize];
             for &e in &s.sees {
+                if quiet.is_some_and(|r| r.is_raider(e) || r.captive(e)) {
+                    continue;
+                }
                 let en = &self.soldiers[e as usize];
                 let d = ((en.x - s.x).powi(2) + (en.y - s.y).powi(2)).sqrt();
                 let entry = nearest.entry(en.squad).or_insert((f32::INFINITY, s.squad));
@@ -1382,22 +1456,39 @@ impl Sim {
     /// neither see nor can be seen.
     pub fn spot_from(&self, i: u32) -> Vec<u32> {
         let o = &self.soldiers[i as usize];
-        if self.squads[o.squad as usize].inside {
+        if self.squads[o.squad as usize].inside || o.hidden {
             return Vec::new();
         }
         let t = &self.terrain;
         let eye = [o.x, o.y, t.height(o.x, o.y) + self.tuning.soldier.eye_height_m];
+        let tired = self.tuning.tiredness.spotting_factor(o.tiredness);
         let range2 = self.spotting_range_of(i).powi(2);
         let head = self.tuning.soldier.head_height_m;
+        // In a raid (decision 75): men lit by a flare are seen as far as its light allows, and an
+        // awake man notices anyone moving (or fighting) close to him whatever the light.
+        let (flares, flare2, hear2) = match &self.raid {
+            Some(r) => {
+                let flare = if r.flares.is_empty() { 0.0 } else { self.flare_sight() * tired };
+                let hear = if r.tuning.switches.hearing { r.tuning.hearing.within_m * tired } else { 0.0 };
+                (&r.flares[..], flare * flare, hear * hear)
+            }
+            None => (&[][..], 0.0, 0.0),
+        };
+        let radius2 = self.raid.as_ref().map_or(0.0, |r| r.tuning.flares.radius_m.powi(2));
         self.by_side[o.side.enemy().index()]
             .iter()
             .copied()
             .filter(|&e| {
                 let s = &self.soldiers[e as usize];
+                if s.hidden || self.squads[s.squad as usize].inside {
+                    return false;
+                }
                 let d2 = (s.x - o.x).powi(2) + (s.y - o.y).powi(2);
-                d2 <= range2
-                    && !self.squads[s.squad as usize].inside
-                    && los::visible(t, &self.los, eye, [s.x, s.y, t.height(s.x, s.y) + head])
+                if d2 <= hear2 && (s.vx * s.vx + s.vy * s.vy > 0.0025 || self.raid.as_ref().is_some_and(|r| r.in_struggle(e))) {
+                    return true;
+                }
+                let lit = d2 <= flare2 && flares.iter().any(|f| (s.x - f.x).powi(2) + (s.y - f.y).powi(2) <= radius2);
+                (d2 <= range2 || lit) && los::visible(t, &self.los, eye, [s.x, s.y, t.height(s.x, s.y) + head])
             })
             .collect()
     }
@@ -1499,6 +1590,8 @@ impl Sim {
                         None => 0,
                         Some(Lost::Frostbite) => 1,
                         Some(Lost::Died) => 2,
+                        Some(Lost::Hit) => 3,
+                        Some(Lost::Taken) => 4,
                     });
                 }
                 for q in &self.squads {
@@ -1544,6 +1637,53 @@ impl Sim {
                 }
             }
         }
+        // The night raid, where the raid file is in force.
+        if let Some(r) = &self.raid {
+            for w in r.rng.state() {
+                h.u64(w);
+            }
+            h.u64(match r.stage {
+                crate::raid::Stage::Waiting => 0,
+                crate::raid::Stage::Planned { depart, post } => 1 + 4 * (depart * 64 + post as u64),
+                crate::raid::Stage::Out { since } => 2 + 4 * since,
+                crate::raid::Stage::Over { at } => 3 + 4 * at,
+            });
+            h.u32(r.instruction as u32);
+            h.u32(r.order as u32);
+            for s in &self.soldiers {
+                h.u32(s.hidden as u32);
+                match &s.own {
+                    Some(o) => {
+                        h.f32(o.goal.0);
+                        h.f32(o.goal.1);
+                        h.f32(o.pace);
+                    }
+                    None => h.u32(0xFFFF_FFFF),
+                }
+            }
+            for (k, t) in r.task.iter().enumerate() {
+                h.u32(*t as u32);
+                h.u64(r.next_shot[k]);
+                h.u32(r.heard[k].map_or(9, |o| o as u32));
+            }
+            for a in &r.alert {
+                h.u64(match *a {
+                    crate::raid::Alert::Quiet => 0,
+                    crate::raid::Alert::Noticed { at } => 1 + 8 * at,
+                    crate::raid::Alert::Challenged { at } => 2 + 8 * at,
+                    crate::raid::Alert::Watching => 3,
+                    crate::raid::Alert::Firing => 4,
+                });
+            }
+            h.u64(r.flares.len() as u64);
+            h.u64(r.struggles.len() as u64);
+            h.u64(r.prisoners.len() as u64);
+            h.u64(r.alarm.unwrap_or(u64::MAX));
+            h.u64(r.gunfire.unwrap_or(u64::MAX));
+            h.u64(r.record.word.map_or(u64::MAX, |w| w.0));
+            h.u64(r.record.taken.len() as u64);
+            h.u32(r.record.raiders_hit);
+        }
         h.finish()
     }
 }
@@ -1587,23 +1727,35 @@ impl MoveCtx<'_> {
             waypoint: s.waypoint,
             still_ticks: 0,
         };
-        if sq.state != SquadState::Moving || s.arrived || s.gone.is_some() {
-            return resting;
-        }
-        let field = sq.field.as_ref().expect("moving squad has a route");
+        // A man going his own way (decision 75) follows his own route, or goes straight, to his own
+        // goal at his own pace; otherwise he moves with his squad.
+        let (field, (sx, sy), pace) = match &s.own {
+            Some(o) => {
+                if s.arrived || s.gone.is_some() {
+                    return resting;
+                }
+                (o.field.as_ref(), o.goal, o.pace)
+            }
+            None => {
+                if sq.state != SquadState::Moving || s.arrived || s.gone.is_some() {
+                    return resting;
+                }
+                (Some(sq.field.as_ref().expect("moving squad has a route")), s.slot, 1.0)
+            }
+        };
 
         // Where to head: straight for his formation place once it is close and in clear reach,
         // otherwise along the route.
-        let (sx, sy) = s.slot;
         let d_slot = ((sx - s.x).powi(2) + (sy - s.y).powi(2)).sqrt();
         let mut waypoint = s.waypoint;
-        let to_slot = d_slot < 3.0 * t.spacing && t.segment_walkable(s.x, s.y, sx, sy);
+        let to_slot = field.is_none() || d_slot < 3.0 * t.spacing && t.segment_walkable(s.x, s.y, sx, sy);
         let target = if to_slot {
             waypoint = None;
             (sx, sy)
         } else {
             // Join the route at the best nearby point, then follow it point by point. Re-join if
             // held up for a while (pushed off the route).
+            let field = field.expect("not straight");
             let stuck = s.still_ticks > 0 && s.still_ticks.is_multiple_of(STUCK_REJOIN_TICKS);
             match waypoint {
                 None => waypoint = field.next_waypoint(t, &tu.walking, s.x, s.y),
@@ -1631,7 +1783,7 @@ impl MoveCtx<'_> {
             let o = &self.soldiers[j as usize];
             // Men inside a shelter are under rock or a roof, not in the way of anyone outside; men
             // lost to the company are gone.
-            if self.squads[o.squad as usize].inside || o.gone.is_some() {
+            if self.squads[o.squad as usize].inside || o.gone.is_some() || o.hidden {
                 return;
             }
             let (ex, ey) = (s.x - o.x, s.y - o.y);
@@ -1670,6 +1822,7 @@ impl MoveCtx<'_> {
         if let Some(cold) = self.cold {
             tired = tired.min(cold.walking_factor(s.chill)) * sq.pace;
         }
+        tired *= pace;
         // Fresh snow where he stands slows him, less on snowshoes (decision 66).
         if let Some(sn) = self.snow {
             let (c, r) = t.nearest_point(s.x, s.y);
