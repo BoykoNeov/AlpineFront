@@ -239,7 +239,7 @@ hardware.
      and recover asleep: about 18 hours awake leaves a man exhausted, 8 hours' sleep makes him
      fresh, and an exhausted man spots at half the distance and walks at 70% of his speed. A squad
      sent elsewhere leaves its duty until the next dusk or dawn, or until "Back to duty". The
-     Italians do not tire yet; that comes with the enemy officer. Carrying is added with the
+     Italians tire too since the night raid (decision 75). Carrying is added with the
      carrying parties; digging waits for building (step 6).
    - Carrying parties and simple cold and hunger are built as one piece (decision 45): the summit's
      stocks run down each day, men go hungry and cold when they run short, and squads on carrying
@@ -262,19 +262,25 @@ hardware.
      Flakes fall around the camera in the 3D view; the map says in words how hard it snows; both
      views draw the fresh snow and the tracks (decision 63). The numbers live in `data/snow.toml`
      (decision 66); every part of it has an on/off switch there (decision 65).
-   - The night raid (being planned). The simple enemy officer picks the night: a dark, snowy one
-     when the guards are weak, and Saturday night at the latest. The raiders come from the Italian
-     front trench just below the summit (decision 69). About 30 of them go for one forward post to
-     take one or two guards prisoner, then pull back (decision 70). Word passes by voice, gunshots and flares, one rule for both
-     sides; falling snow shortens a shout as it shortens sight, and the player hears of the raid
-     only when word reaches the command post (decision 71). Shooting is hit or miss, harder at distance, in the
-     dark and in falling snow, and much harder against a man in a post; a man hit is out for the
-     week (decision 72). What a guard does when men come at his post (inside about 150 m and
-     closing) is the player's standing instruction from the dawn screen: flare and fire, shout
-     first, or watch quietly and send word; enemies merely seen are only reported, and guards hold
-     fire until a hit is likely (decision 73). Two or more raiders reaching a guard overpower him
-     in a short struggle set by surprise, hand weapons and each man's close-combat ability, and walk
-     him back under escort; he gets free if the escort is shot (decision 74).
+   - The night raid (decisions 69 to 75). The simple enemy officer picks the night from what he
+     could know (the sky, his own sometimes-wrong forecast, the men he counts at our posts at
+     dusk), not before Tuesday and on Saturday night at the latest, and sets out between 02:00 and
+     03:30. About 30 raiders in three squads wait hidden in the Italian front trench, 70 to 80 m
+     below the South and South-west posts, and go for one post to take one or two guards
+     prisoner, then pull back (decision 70). Word passes by voice, gunshots and flares, one rule
+     for both sides; the raiders' officer whispers until the alarm is up, falling snow shortens a
+     shout, and an awake man always notices someone moving within 5 m of him. The player hears of
+     the raid only when word reaches the command post at the great cavern's mouth (gunfire and
+     flares at once, a runner after a delay); until then neither view shows the raiders (decision
+     71). Shooting is hit or miss, harder at distance, near the edge of what the shooter can see,
+     and against a man in a post; a man hit is out for the week (decision 72). What a guard does
+     when men come at his post (inside about 150 m and closing) is the player's standing
+     instruction from the dawn screen: flare and fire, shout first, or watch quietly and send
+     word (decision 73). Two or more raiders reaching a guard start a short struggle set by
+     surprise, hand weapons and each man's close-combat ability, and walk a prisoner back under
+     escort; he gets free if the escort is shot (decision 74). The Italians tire under the same
+     rule as our men; raiders start fresh and the far patrols are relieved every 12 hours. The
+     numbers live in `data/raid.toml`, every part with its own switch (decision 75).
    - The week is Monday 6 to Sunday 12 March 1916 (decision 31): deep snow and hard cold, the
      Italians tunnelling toward the summit since mid-January. On the summit the sun rises at about
      06:40 and sets at about 18:10 (Central European Time, before summer time began that April), so
@@ -324,11 +330,10 @@ weather.
       deep. No height from before the war has been found; if one turns up, the rebuild script
       takes it as a single number.
 - [ ] Does Veneto's laser-scan data cover Col di Lana in finer detail than its 10 m terrain grid?
-- [ ] Night sight in heavy snow: falling snow cuts the night spotting distance by the same share as
-      the day's (decision 62), which leaves about 4 to 8 m in heavy snow at night. Judge it when the
-      night raid is built: raiders may reach the posts unseen. The numbers are in `data/snow.toml`.
-      Director's view (2026-11-19): that is acceptable as long as the snow blinds both sides alike,
-      so the raiders cannot see the guards either, and it also makes it hard for men to pass word
-      to each other (raiders keeping together, a guard raising the alarm). Sight is already the same
-      distance both ways; the one difference is that our guards tire and the Italians do not yet.
-      Passing word does not exist yet and is part of planning the raid.
+- [x] Night sight in heavy snow. Answered 2026-11-19 (decision 75). Falling snow cuts the night
+      spotting distance by the same share as the day's (decision 62). The figure first given here,
+      4 to 8 m, was wrong: on an overcast moonless night in heavy snow the game's numbers give about
+      1 m. Director's view: acceptable as long as the snow blinds both sides alike and makes it hard
+      to pass word. The raid plan keeps it, with two additions: an awake man always notices someone
+      moving within 5 m of him (half that when exhausted), on both sides; and the Italians tire too,
+      so sight is the same both ways.
