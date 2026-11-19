@@ -246,6 +246,12 @@ hardware.
      (sent down, lost for the week) or die of exposure. Hunger makes men tire faster, sleep worse
      and chill faster, but never kills by itself inside the week. The numbers live in
      `data/supply.toml`; the week's temperatures, invented like its cloud, in the weather diary.
+   - Falling snow brings the snow layer forward from step 7 (decision 57). Snowfall is added to the
+     weather diary. Fresh snow builds up on each 10 m square of the map while it falls and settles
+     afterwards; it slows the men who walk through it. Men walking a square pack it down, so the
+     first party after a fall breaks the trail slowly and those after it walk faster, while a path
+     nobody uses fills in again. The tracks are drawn in both views. The details are planned with
+     the director first.
    - The week is Monday 6 to Sunday 12 March 1916 (decision 31): deep snow and hard cold, the
      Italians tunnelling toward the summit since mid-January. On the summit the sun rises at about
      06:40 and sets at about 18:10 (Central European Time, before summer time began that April), so
@@ -256,7 +262,9 @@ hardware.
 5. **Artillery and craters.** Ballistic fire, observers, terrain deformation.
 6. **Supply and building.** Food, ammunition, carrying parties, cableways, huts, caverns, wire.
 7. **Weather and snow.** Fields, snow layer, cold, avalanches. (Light, night and the step-2
-   weather diary already exist from step 2; this step replaces the diary with weather fields.)
+   weather diary already exist from step 2; this step replaces the diary with weather fields. The
+   snow layer with trodden tracks also exists from step 2, decision 57; this step adds wind, drifts
+   and avalanches to it.)
 8. **Tunnels and mines.** Digging, listening, counter-mining, the summit explosion.
 9. **Campaign and scenarios.** The season-long game and standalone set pieces. The final screen look
    is decided before this step.
