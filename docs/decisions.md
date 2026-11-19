@@ -410,3 +410,9 @@ not online. The ration, fuel and load figures are Claude's estimates.
 | # | Topic | Chosen | Rejected | Why |
 | --- | --- | --- | --- | --- |
 | 68 | What the speed pass runs now there is snow | Both simulation runs have falling snow in force with 40 cm of fresh snow already lying, so every walk is slowed by it, packs it and plans its route through it; the diary has no snow falling at Monday noon or dusk, so the light, and with it the line-of-sight work, stays at its heaviest. The frame check plays the game with heavy snow falling all the time over 30 to 40 cm of fresh snow (a `--snowing` option for checks only, never recorded), so the flakes and the snow drawn in both views are measured | Measuring snow only where the diary has it (Monday has none, so the speed pass would not see it); a separate snow run | Claude's call while building, reported to the director: the same reason as decision 44, the speed pass must measure what the game does |
+
+## 2026-11-19 — Step 2: the night raid
+
+| # | Topic | Chosen | Rejected | Why |
+| --- | --- | --- | --- | --- |
+| 69 | When the raid comes | The simple enemy officer chooses the night: he waits for a dark, snowy night when the guards are weak, and raids by Saturday night at the latest, so every week has one raid. The raiders start from the Italian front trench, which period sources put only tens of metres below the summit, not from the far patrol routes | A fixed night (Friday, in the heavy snow); only on demand from a test option | Claude's recommendation, chosen by the director. The player's roster, carrying and tiredness choices then change the raid, and the sometimes-wrong snow forecast becomes a real worry. Falling snow blinds both sides alike (the director's view, see the brief's open question), so a snowy night is a gamble for the raiders too. Cost accepted: the raid night differs between seeds, so runs are harder to compare |
