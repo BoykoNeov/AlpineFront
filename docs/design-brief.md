@@ -314,3 +314,8 @@ weather.
 - [ ] Night sight in heavy snow: falling snow cuts the night spotting distance by the same share as
       the day's (decision 62), which leaves about 4 to 8 m in heavy snow at night. Judge it when the
       night raid is built: raiders may reach the posts unseen. The numbers are in `data/snow.toml`.
+      Director's view (2026-11-19): that is acceptable as long as the snow blinds both sides alike,
+      so the raiders cannot see the guards either, and it also makes it hard for men to pass word
+      to each other (raiders keeping together, a guard raising the alarm). Sight is already the same
+      distance both ways; the one difference is that our guards tire and the Italians do not yet.
+      Passing word does not exist yet and is part of planning the raid.
