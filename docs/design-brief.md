@@ -32,6 +32,10 @@ That makes verification tooling part of the first milestone, not a later extra:
   the expected outcomes; the director approves them, and they are then locked: Claude may not
   change one without asking. Tuning numbers live in readable data files, and each run ends in a
   plain-language report.
+- **Switchable rules.** Every game rule, and each optional part of one (for example breaking
+  trail in fresh snow, or snowshoes), can be switched off on its own in its data file, and the
+  game then behaves as if it had never been built (decision 65). A rule that proves wrong or not
+  fun can be dropped, or tried without, by changing one line.
 - **Speed pass.** After every build step, on the development PC (the only test machine). See
   [Build order](#build-order).
 - **This document.** Claude Code re-reads it each session; decisions are changed here first, then

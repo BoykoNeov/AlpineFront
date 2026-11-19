@@ -22,6 +22,10 @@ review code.
 - Write lasting tests only for things not expected to change (decision 56): the basic rules, not
   this week's numbers or behaviour a later step will replace. Those are checked by hand while they
   are being built, and judged by playing.
+- Every game rule can be switched off on its own (decision 65). Each rule, and each optional part
+  of a rule (for example breaking trail in fresh snow, or snowshoes), gets an on/off switch in its
+  readable data file. Switched off, the game behaves as if that rule had never been built. Keep
+  rules apart in the code so that switching one off never needs code changes or breaks another.
 - The simulation is plain Rust with a fixed run order and seeded randomness, and has no Bevy or
   rendering dependency. Bevy only draws a snapshot. Every test runs twice and the results must match
   exactly.
