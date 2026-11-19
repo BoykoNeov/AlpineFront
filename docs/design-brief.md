@@ -267,7 +267,9 @@ hardware.
      front trench just below the summit (decision 69). About 30 of them go for one forward post to
      take one or two guards prisoner, then pull back (decision 70). Word passes by voice, gunshots and flares, one rule for both
      sides; falling snow shortens a shout as it shortens sight, and the player hears of the raid
-     only when word reaches the command post (decision 71).
+     only when word reaches the command post (decision 71). Shooting is hit or miss, harder at distance, in the
+     dark and in falling snow, and much harder against a man in a post; a man hit is out for the
+     week (decision 72).
    - The week is Monday 6 to Sunday 12 March 1916 (decision 31): deep snow and hard cold, the
      Italians tunnelling toward the summit since mid-January. On the summit the sun rises at about
      06:40 and sets at about 18:10 (Central European Time, before summer time began that April), so
