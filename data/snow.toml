@@ -1,0 +1,77 @@
+# Falling snow (decisions 57 to 67). Used by the step-2 game; the locked tests 1 to 37 run without
+# this file, so there is no snow for them. When and how hard snow falls is in the weather diary,
+# data/weather/march_1916.toml.
+#
+# WHAT IS HISTORICAL AND WHAT IS NOT. A wartime Austro-Hungarian booklet, "Mountain Warfare in
+# Winter", lists snowshoes (Schneereifen) as standard kit for mountain troops; the Kaiserjaeger who
+# held Col di Lana were regular infantry, so how many had them is not known (decision 58). Every
+# number below is Claude's estimate.
+#
+# Only snow fallen this week counts: the deep old snow already lying is firm, and men walk on it as
+# on bare ground. Safe to edit; replays keep a copy of the file they were recorded with.
+
+# ---- Switches (decision 65) -------------------------------------------------------------------------
+# Each part of falling snow can be switched off on its own; the game then behaves as if that part
+# had never been built.
+[switches]
+# Snow falls as the weather diary says. Off: no snow ever falls, and everything below is off too.
+snowfall = true
+# Fresh snow slows the men walking through it.
+slows_walking = true
+# Walking packs fresh snow down into tracks. Off: fresh snow slows everyone alike; nobody packs it.
+trail_breaking = true
+# The squads listed under [snowshoes] walk on snowshoes. Off: everyone goes on foot.
+snowshoes = true
+# Squads choose routes with the snow in mind, so they use packed tracks (decision 67).
+routes_use_tracks = true
+# Falling snow shortens how far men see.
+cuts_sight = true
+# The dawn report forecasts snow for the day and the night.
+forecast = true
+# Some forecasts are wrong (decision 61).
+wrong_forecasts = true
+
+# ---- Who has snowshoes (decisions 58 and 59) ------------------------------------------------------
+[snowshoes]
+# Squads by their numbers in the game: one from each third of the first morning's roster (day
+# guards, night guards, reserve).
+squads = [4, 9, 14]
+source = "snowshoes as standard kit for mountain troops: the booklet \"Mountain Warfare in Winter\"; which squads: Claude's choice"
+
+# ---- Walking in fresh snow (decision 66) ----------------------------------------------------------
+[walking]
+# Pairs of [centimetres of loose fresh snow, share of his speed a man keeps]. Between the points in
+# proportion; past the last, the last. Knee-deep is about 40 cm.
+on_foot = [[0.0, 1.0], [10.0, 0.85], [25.0, 0.5], [40.0, 0.25], [80.0, 0.15]]
+snowshoes = [[0.0, 1.0], [10.0, 0.95], [25.0, 0.75], [40.0, 0.5], [80.0, 0.35]]
+
+# ---- Packing tracks -------------------------------------------------------------------------------
+[packing]
+# This many men walking across a 10 m square of fresh snow leave this share of it loose: about one
+# squad packs a track back to nearly normal walking.
+men_to_pack = 10.0
+left_loose = 0.1
+
+# ---- Settling -------------------------------------------------------------------------------------
+[settling]
+# Fresh snow settles to half its depth in this many hours, and slows men less as it does.
+half_life_hours = 24.0
+
+# ---- Sight in falling snow (decision 62) ----------------------------------------------------------
+[sight]
+# Pairs of [snowfall in cm an hour, metres a man is spotted at by day while it falls]. At night the
+# light's distance is cut by the same share.
+by_snowfall = [[0.0, 1500.0], [0.2, 1300.0], [1.0, 600.0], [2.5, 250.0], [4.0, 100.0]]
+# Words for how hard it is snowing: light below this, moderate below the next, heavy from it.
+moderate_from_cm_per_hour = 1.5
+heavy_from_cm_per_hour = 3.5
+
+# ---- The dawn forecast (decision 61) --------------------------------------------------------------
+[forecast]
+# A forecast speaks of snow when at least this many centimetres fall in its half of the day (dawn to
+# 18:00, 18:00 to 06:00), and of heavy snow from the second figure.
+snow_from_cm = 2.0
+heavy_from_cm = 15.0
+# The chance that the forecast for one half of the day is wrong: snow that never comes, or a fall
+# nobody forecast. The game's seed decides, so replays match.
+wrong_chance = 0.2

@@ -14,6 +14,7 @@ pub mod rng;
 pub mod scenario;
 pub mod sim;
 pub mod sky;
+pub mod snow;
 pub mod spatial;
 pub mod supply;
 pub mod terrain;

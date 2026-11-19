@@ -3,6 +3,7 @@
 //! field; the simulation works one out per squad, covering only the area around its men and their way. Walking time per edge uses the walking-speed rule in the tuning file, so
 //! routes bend around steep ground on their own.
 
+use crate::snow::RouteSnow;
 use crate::terrain::{NEIGHBOURS, Terrain};
 use crate::tuning::WalkingTuning;
 use std::cmp::Ordering;
@@ -12,6 +13,18 @@ pub struct FlowField {
     pub dest: (usize, usize),
     /// Seconds to walk from each grid point to the destination; infinite if it cannot be reached.
     pub time: Vec<f32>,
+    /// The fresh snow the route was planned with (decision 67); None: the ground alone.
+    pub snow: Option<RouteSnow>,
+}
+
+/// Seconds to walk one edge of `run` metres between grid points `a` and `b` on this grade: the
+/// ground's walking speed, slowed by the fresh snow at the two ends where the route sees snow.
+#[inline]
+fn edge_time(w: &WalkingTuning, snow: Option<&RouteSnow>, run: f32, grade: f32, a: usize, b: usize) -> f32 {
+    match snow {
+        None => run / w.speed_mps(grade),
+        Some(s) => run / (w.speed_mps(grade) * 0.5 * (s.factor(a) + s.factor(b))),
+    }
 }
 
 #[derive(PartialEq)]
@@ -47,13 +60,20 @@ const BOUND_MARGIN_S: f32 = 180.0;
 impl FlowField {
     /// Walking times from the whole map.
     pub fn compute(t: &Terrain, w: &WalkingTuning, dest: (usize, usize)) -> FlowField {
-        Self::compute_bounded(t, w, dest, &[])
+        Self::compute_bounded(t, w, dest, &[], None)
     }
 
     /// Walking times from the area that matters for men starting at `from` (grid points): the
     /// calculation stops once all of them are covered and it has gone a margin beyond. Places it
-    /// did not reach are left infinite. With `from` empty, covers the whole map.
-    pub fn compute_bounded(t: &Terrain, w: &WalkingTuning, dest: (usize, usize), from: &[(usize, usize)]) -> FlowField {
+    /// did not reach are left infinite. With `from` empty, covers the whole map. With `snow`, fresh
+    /// snow slows the walking times (decision 67).
+    pub fn compute_bounded(
+        t: &Terrain,
+        w: &WalkingTuning,
+        dest: (usize, usize),
+        from: &[(usize, usize)],
+        snow: Option<RouteSnow>,
+    ) -> FlowField {
         let n = t.cols * t.rows;
         let mut needed: Vec<bool> = vec![false; if from.is_empty() { 0 } else { n }];
         let mut left = 0usize;
@@ -100,7 +120,7 @@ impl FlowField {
                 // Walking from u to v.
                 let run = if k % 2 == 1 { diag } else { t.spacing };
                 let grade = (hv - t.heights[ui]) / run;
-                let cand = tv + run / w.speed_mps(grade);
+                let cand = tv + edge_time(w, snow.as_ref(), run, grade, ui, vi);
                 if cand < time[ui] {
                     time[ui] = cand;
                     heap.push(Item(cand, ui as u32));
@@ -115,7 +135,7 @@ impl FlowField {
                 }
             }
         }
-        FlowField { dest, time }
+        FlowField { dest, time, snow }
     }
 
     #[inline]
@@ -198,7 +218,7 @@ impl FlowField {
                 continue;
             }
             let run = if k % 2 == 1 { diag } else { t.spacing };
-            let total = tn + run / w.speed_mps((t.h(nc, nr) - t.h(c, r)) / run);
+            let total = tn + edge_time(w, self.snow.as_ref(), run, (t.h(nc, nr) - t.h(c, r)) / run, t.idx(c, r), t.idx(nc, nr));
             if best.is_none_or(|(_, b)| total < b) {
                 best = Some(((nc, nr), total));
             }

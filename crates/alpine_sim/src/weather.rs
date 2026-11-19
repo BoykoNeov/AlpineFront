@@ -1,6 +1,7 @@
 //! The weather diary (decision 34): cloud cover and air temperature through the week, read from a
 //! data file. Between two entries a value changes evenly; before the first and after the last it
-//! holds. The temperature is used by cold (decision 51) and may be left out of a diary.
+//! holds. The temperature is used by cold (decision 51) and may be left out of a diary; so may the
+//! snowfall, used by falling snow (decisions 57 to 67).
 
 use crate::sky::DateTime;
 use serde::Deserialize;
@@ -10,6 +11,14 @@ struct DiaryFile {
     cloud: Vec<CloudEntry>,
     #[serde(default)]
     temperature: Vec<TemperatureEntry>,
+    #[serde(default)]
+    snowfall: Vec<SnowfallEntry>,
+}
+
+#[derive(Debug, Deserialize)]
+struct SnowfallEntry {
+    at: String,
+    cm_per_hour: f64,
 }
 
 #[derive(Debug, Deserialize)]
@@ -30,6 +39,9 @@ pub struct Weather {
     cloud: Vec<(f64, f64)>,
     /// (local seconds since 1970, air temperature in °C on the summit), in time order; may be empty.
     temperature: Vec<(f64, f64)>,
+    /// (local seconds since 1970, fresh snow falling in centimetres per hour), in time order; may be
+    /// empty (no snow).
+    snowfall: Vec<(f64, f64)>,
 }
 
 /// The air temperature when a diary gives none.
@@ -52,12 +64,18 @@ fn between(c: &[(f64, f64)], t: f64) -> f64 {
 impl Weather {
     /// A sky with the same cloud cover all the time (for tests).
     pub fn constant(cover: f64) -> Weather {
-        Weather { cloud: vec![(0.0, cover.clamp(0.0, 1.0))], temperature: Vec::new() }
+        Weather { cloud: vec![(0.0, cover.clamp(0.0, 1.0))], temperature: Vec::new(), snowfall: Vec::new() }
     }
 
     /// The same weather with the same air temperature all the time (for tests).
     pub fn with_temperature(mut self, celsius: f64) -> Weather {
         self.temperature = vec![(0.0, celsius)];
+        self
+    }
+
+    /// The same weather with snow falling at the same rate all the time (for tests).
+    pub fn with_snowfall(mut self, cm_per_hour: f64) -> Weather {
+        self.snowfall = vec![(0.0, cm_per_hour.max(0.0))];
         self
     }
 
@@ -88,7 +106,18 @@ impl Weather {
             }
             temperature.push((t, e.celsius));
         }
-        Ok(Weather { cloud, temperature })
+        let mut snowfall = Vec::new();
+        for e in &file.snowfall {
+            let t = DateTime::parse(&e.at).map_err(|m| format!("weather diary: {m}"))?.to_seconds();
+            if !(0.0..=30.0).contains(&e.cm_per_hour) {
+                return Err(format!("weather diary: snowfall at {} must be between 0 and 30 cm an hour", e.at));
+            }
+            if snowfall.last().is_some_and(|&(p, _)| t <= p) {
+                return Err(format!("weather diary: snowfall entry {} is not later than the one before it", e.at));
+            }
+            snowfall.push((t, e.cm_per_hour));
+        }
+        Ok(Weather { cloud, temperature, snowfall })
     }
 
     /// The week of the step-2 game, `data/weather/march_1916.toml`, and its text.
@@ -106,6 +135,22 @@ impl Weather {
     /// Air temperature on the summit at a moment (local seconds since 1970), in °C.
     pub fn celsius_at(&self, t: f64) -> f64 {
         if self.temperature.is_empty() { DEFAULT_CELSIUS } else { between(&self.temperature, t) }
+    }
+
+    /// Snow falling at a moment (local seconds since 1970), in centimetres of fresh snow per hour.
+    pub fn snowfall_at(&self, t: f64) -> f64 {
+        if self.snowfall.is_empty() { 0.0 } else { between(&self.snowfall, t).max(0.0) }
+    }
+
+    /// Centimetres of fresh snow falling between two moments (local seconds since 1970), added up
+    /// minute by minute.
+    pub fn snowfall_between(&self, from: f64, to: f64) -> f64 {
+        if self.snowfall.is_empty() || to <= from {
+            return 0.0;
+        }
+        let steps = ((to - from) / 60.0).ceil().max(1.0) as usize;
+        let dt = (to - from) / steps as f64;
+        (0..steps).map(|k| self.snowfall_at(from + (k as f64 + 0.5) * dt) * dt / 3600.0).sum()
     }
 }
 

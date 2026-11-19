@@ -11,6 +11,17 @@
 # Places are in metres from the summit (x east, y north). Safe to edit; replays keep a copy of the
 # file they were recorded with.
 
+# ---- Switches (decision 65) -------------------------------------------------------------------------
+# Each rule can be switched off on its own; the game then behaves as if it had never been built.
+[switches]
+# Squads can be set to carry. Off: a squad set to carry rests instead.
+carrying = true
+# Men grow cold outside and warm up in heated shelters, and fuel burns. Off: nobody grows cold and
+# no fuel is needed.
+cold = true
+# Men grow hungry without meals, and food is eaten. Off: nobody grows hungry and no food is needed.
+hunger = true
+
 # ---- Where supplies are fetched and kept ---------------------------------------------------------
 
 # The supply dump on the top of Monte Sief. It never runs out this week (how supplies reach it from

@@ -59,7 +59,7 @@ fn twice<T: PartialEq + std::fmt::Debug + Send>(f: impl Fn() -> T + Sync) -> Res
 
 /// The step-2 game as played, with the supply file.
 fn game(w: &World) -> Sim {
-    scenario::build(scenario::STEP2, w.terrain.clone(), w.tuning.clone(), 1916, make_pool(4), &w.diary_toml, &w.places_toml, &w.supply_toml)
+    scenario::build(scenario::STEP2, w.terrain.clone(), w.tuning.clone(), 1916, make_pool(4), &w.diary_toml, &w.places_toml, &w.supply_toml, "")
         .unwrap()
 }
 

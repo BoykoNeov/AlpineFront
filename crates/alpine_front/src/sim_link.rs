@@ -128,13 +128,25 @@ impl SimLink {
                 };
                 // Carrying parties, cold and hunger: in the game as played, not in --autoplay.
                 let supply_toml = if name == scenario::STEP2 { alpine_sim::supply::load_text()? } else { String::new() };
+                // Falling snow likewise (decisions 57 to 67).
+                let snow_toml = if name == scenario::STEP2 { alpine_sim::snow::load_text()? } else { String::new() };
                 let rec = Recorder::new(name, o.seed, terrain.fingerprint(), &tuning_toml, &weather_toml, &places_toml)
-                    .with_supply(&supply_toml);
-                let sim = scenario::build(name, terrain, tuning, o.seed, pool, &weather_toml, &places_toml, &supply_toml)?;
+                    .with_supply(&supply_toml)
+                    .with_snow(&snow_toml);
+                let sim = scenario::build(name, terrain, tuning, o.seed, pool, &weather_toml, &places_toml, &supply_toml, &snow_toml)?;
                 (sim, name.to_string(), Some(rec), None)
             }
         };
         let mut recorder = recorder;
+        // For checks: heavy snow falling all the time over fresh snow already lying. The weather is
+        // no longer the diary's, so nothing is recorded.
+        if let (Some(cm), Some(sn), Some(c)) = (o.snowing, sim.snow.as_mut(), sim.clock.as_mut()) {
+            c.weather = c.weather.clone().with_snowfall(4.0);
+            sn.loose.fill(cm);
+            sn.untrodden = cm;
+            sn.for_routes = Arc::new(sn.loose.clone());
+            recorder = None;
+        }
         // Fast-forward if asked (recorded like any other ticks).
         let ahead = (o.advance_minutes * 60.0 * sim.tuning.time.ticks_per_second as f32) as u64;
         for _ in 0..ahead {

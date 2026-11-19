@@ -254,8 +254,14 @@ hardware.
      weather diary. Fresh snow builds up on each 10 m square of the map while it falls and settles
      afterwards; it slows the men who walk through it. Men walking a square pack it down, so the
      first party after a fall breaks the trail slowly and those after it walk faster, while a path
-     nobody uses fills in again. The tracks are drawn in both views. The details are planned with
-     the director first.
+     nobody uses fills in again, and routes prefer packed tracks (decision 67). Three squads have
+     snowshoes and are slowed less, so the player chooses who breaks the trail (decisions 58 and
+     59). The week brings about 20 cm on Tuesday and 50 cm from Thursday night into Friday
+     (decision 60); falling snow shortens how far men see (decision 62); the dawn report gives a
+     forecast that is sometimes wrong (decision 61). The snow slows the Italians too (decision 64).
+     Flakes fall around the camera in the 3D view; the map says in words how hard it snows; both
+     views draw the fresh snow and the tracks (decision 63). The numbers live in `data/snow.toml`
+     (decision 66); every part of it has an on/off switch there (decision 65).
    - The week is Monday 6 to Sunday 12 March 1916 (decision 31): deep snow and hard cold, the
      Italians tunnelling toward the summit since mid-January. On the summit the sun rises at about
      06:40 and sets at about 18:10 (Central European Time, before summer time began that April), so

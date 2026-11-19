@@ -8,12 +8,40 @@ use serde::Deserialize;
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct SupplyFile {
+    #[serde(default)]
+    pub switches: SupplySwitches,
     pub dump: PlaceEntry,
     pub store: PlaceEntry,
     pub stocks: StockTuning,
     pub carrying: CarryTuning,
     pub cold: ColdTuning,
     pub hunger: HungerTuning,
+}
+
+fn yes() -> bool {
+    true
+}
+
+/// Carrying, cold and hunger, each on or off (decision 65); off, the game behaves as if that rule
+/// had never been built.
+#[derive(Clone, Debug, Deserialize)]
+pub struct SupplySwitches {
+    /// Squads can be set to carry. Off: a squad set to carry rests instead.
+    #[serde(default = "yes")]
+    pub carrying: bool,
+    /// Men grow cold outside and warm in heated shelters; fuel burns. Off: nobody grows cold and no
+    /// fuel is needed.
+    #[serde(default = "yes")]
+    pub cold: bool,
+    /// Men grow hungry without meals; food is eaten. Off: nobody grows hungry and no food is needed.
+    #[serde(default = "yes")]
+    pub hunger: bool,
+}
+
+impl Default for SupplySwitches {
+    fn default() -> Self {
+        SupplySwitches { carrying: true, cold: true, hunger: true }
+    }
 }
 
 #[derive(Clone, Debug, Deserialize)]

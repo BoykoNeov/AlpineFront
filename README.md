@@ -17,7 +17,11 @@ or sleeps in a shelter, by day and by night, and men tire while awake (posts and
 accounts of the summit position, in `data/places/col_di_lana_1916.toml`); and carrying parties, cold
 and hunger: food and fuel come up from a dump on Monte Sief to the kitchen cavern on the summit, men
 grow cold outside and hungry without meals, and the neglected are lost to frostbite or die (numbers
-in `data/supply.toml`; the week's temperatures in `data/weather/march_1916.toml`).
+in `data/supply.toml`; the week's temperatures in `data/weather/march_1916.toml`); and falling snow:
+fresh snow builds up on the map, slows men wading through it (less on snowshoes), is packed into
+tracks that routes prefer, shortens sight while it falls, and is forecast at dawn, sometimes wrongly
+(numbers in `data/snow.toml`; the week's snowfall in the weather diary). Every rule can be switched
+off on its own in its data file (decision 65).
 
 - [Design brief](docs/design-brief.md): what the game is, the agreed decisions, architecture and
   build order
@@ -36,7 +40,9 @@ The game opens at first light on Monday 6 March 1916 with the orders screen; pre
 holds the work roster: click "guard", "rest" or "carry" for each squad's day and night duty. A
 carrying squad walks to the Sief dump, loads up and brings food or fuel (whichever is lower) to the
 kitchen cavern, over and over, and rests once the store is full; the store's days of food and fuel
-show at the top of the screen. Squads change over
+show at the top of the screen. Three squads have snowshoes (marked in the roster): fresh snow slows
+them less, so they are the ones to break a trail after a snowfall. The top of the screen shows the
+fresh snow lying, and the morning report gives the forecast. Squads change over
 by themselves at dusk and dawn; the side panel's "Work roster" changes duties at any time. Resting men
 are inside their shelter and are not drawn; select their squad from the roster. A squad you send
 somewhere leaves its duty until the next dusk or dawn, or until you press "Back to duty".
@@ -68,7 +74,7 @@ on the left switches the overlays.
 The scenario tests end in a plain-language report: `--test scenarios` runs the step-1 tests (about
 30 s), `--test step2` the calendar, night and skip-ahead tests (about 3 minutes), `--test roster` the
 work-roster tests (about 90 s), `--test supply` the carrying, cold and hunger tests (about 2
-minutes). They test the lasting rules only; numbers that later steps or tuning will move are judged
+minutes), `--test snow` the falling-snow and rule-switch tests (a few seconds). They test the lasting rules only; numbers that later steps or tuning will move are judged
 by playing (decision 56).
 
 ## Speed pass
@@ -120,6 +126,14 @@ first run had one frame of 1,688 at 9.9 ms in the random-orders run (which has n
 hunger in it); the second run's busiest frame there was 4.2 ms, as before. The game as played now
 runs with carrying, cold and hunger on and one squad carrying around the clock: busiest frame 4.2 ms
 (99% within 1.7 ms). 99% of drawn frames within 8.7 ms in both views.
+
+Falling snow (2026-11-19, decisions 57 to 68): passed. Both simulation runs now have 40 cm of fresh
+snow lying, which every walk packs and routes plan through. Random orders at noon: busiest frame
+5.3 ms against 8.3 ms (99% within 2.0 ms). The game as played across Monday's dusk: busiest frame
+4.0 ms (99% within 1.1 ms; 3.0 ms at most in the two game minutes after dusk). The frame check plays
+in heavy falling snow (flakes in the 3D view, snow and tracks drawn in both): 99% of frames within
+8.7 ms in the 3D view and 8.6 ms on the map. Run flat out the simulation goes about 1,020x faster
+than real time; the skip-ahead crosses Monday night in about 14 s.
 
 `ALPINE_CLICK_CHECK=1 target\release\alpine_front.exe --view map` (or `--view terrain`) checks that a
 view can be played: it carries on at the dawn orders screen, moves in close to the summit (where the

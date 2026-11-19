@@ -7,10 +7,12 @@
 //!    the day now beginning (and, with the supply file, the men eat); then orders scheduled for this
 //!    tick are given to their squads; carrying squads load, unload and set off again; and once a game
 //!    minute the player's men tire or recover (with the supply file also: fuel burns, men grow cold
-//!    or warm up and hungrier, and the very cold may get frostbite or die);
+//!    or warm up and hungrier, and the very cold may get frostbite or die); with the snow file, once
+//!    a game minute fresh snow falls and settles;
 //! 2. patrolling squads that have waited long enough pick a new destination;
 //! 3. squads whose route is ready start moving;
-//! 4. every soldier moves (split across threads; each man reads only the previous state);
+//! 4. every soldier moves (split across threads; each man reads only the previous state); with the
+//!    snow file, then, in soldier order, each man who moved packs the fresh snow where he walked;
 //! 5. squads whose men have all arrived are marked arrived;
 //! 6. the soldiers due to look around this tick check which enemies they can see (split across
 //!    threads);
@@ -30,6 +32,7 @@ use crate::rng::Rng;
 use crate::roster::{Duty, Place, PlaceKind, Roster};
 use crate::sky::{self, Calendar, SkyState};
 use crate::spatial::SpatialGrid;
+use crate::snow::{Forecast, RouteSnow, Snow, SnowFile};
 use crate::supply::{CarryLeg, ColdTuning, Lost, LostMan, Stock, Supply, SupplyFile};
 use crate::terrain::Terrain;
 use crate::tuning::Tuning;
@@ -209,6 +212,8 @@ pub struct Squad {
     pub carry: Option<CarryLeg>,
     /// Its men walk at this share of their speed (carrying loads, carrying in the dark); 1 otherwise.
     pub pace: f32,
+    /// Its men have snowshoes (games with the snow file; decisions 58 and 59).
+    pub snowshoes: bool,
 }
 
 /// What a squad on the roster did in a day, for the morning report.
@@ -272,6 +277,8 @@ pub struct Sim {
     pub places: Vec<Place>,
     /// The summit's stocks, cold and hunger (games with the supply file; decisions 45 to 53).
     pub supply: Option<Supply>,
+    /// Fresh snow on the map, and the forecast (games with the snow file; decisions 57 to 67).
+    pub snow: Option<Snow>,
     rng: Rng,
     pool: Arc<rayon::ThreadPool>,
     scheduled: VecDeque<LoggedOrder>,
@@ -312,6 +319,7 @@ impl Sim {
             journal: Vec::new(),
             places: Vec::new(),
             supply: None,
+            snow: None,
             los: LosParams::from_tuning(&tuning.line_of_sight),
             terrain,
             tuning,
@@ -411,6 +419,7 @@ impl Sim {
             yesterday: None,
             carry: None,
             pace: 1.0,
+            snowshoes: false,
         });
         self.grid.rebuild(self.soldiers.iter().map(|s| (s.x, s.y)));
         sid
@@ -486,11 +495,21 @@ impl Sim {
         self.jobs.insert(squad, job.clone());
         let terrain = self.terrain.clone();
         let walking = self.tuning.walking.clone();
+        let snow = self.route_snow(squad);
         self.pool.spawn(move || {
-            let f = Arc::new(FlowField::compute_bounded(&terrain, &walking, dp, &from));
+            let f = Arc::new(FlowField::compute_bounded(&terrain, &walking, dp, &from, snow));
             *job.result.lock().unwrap() = Some(f);
             job.ready.notify_all();
         });
+    }
+
+    /// What squad `squad`'s route should know of the snow (decision 67): the fresh snow as at the
+    /// latest game minute and its men's footwear; None where routes do not see snow.
+    fn route_snow(&self, squad: u32) -> Option<RouteSnow> {
+        let sn = self.snow.as_ref().filter(|s| s.routes_see_snow())?;
+        let shoes = self.squads[squad as usize].snowshoes && sn.tuning.switches.snowshoes;
+        let table = if shoes { sn.tuning.walking.snowshoes.clone() } else { sn.tuning.walking.on_foot.clone() };
+        Some(RouteSnow { loose: sn.for_routes.clone(), table })
     }
 
     /// The squad's route, waiting for the worker thread if it is not finished yet.
@@ -606,11 +625,17 @@ impl Sim {
         if q.detached {
             return None;
         }
-        // Carrying needs the supply file; without it a squad set to carry rests instead.
+        // Carrying needs the supply file with carrying switched on; otherwise a squad set to carry
+        // rests instead.
         q.roster.map(|r| match r.duty(night) {
-            Duty::Carry if self.supply.is_none() => Duty::Rest,
+            Duty::Carry if !self.carrying_on() => Duty::Rest,
             d => d,
         })
+    }
+
+    /// Whether carrying parties exist in this game: the supply file, with carrying switched on.
+    pub fn carrying_on(&self) -> bool {
+        self.supply.as_ref().is_some_and(|s| s.tuning.switches.carrying)
     }
 
     /// Picks a place and spot for squad `i`'s current duty: the first free regular spot at a place
@@ -807,6 +832,10 @@ impl Sim {
     /// has it, in soldier order.
     fn serve_meal(&mut self) {
         let Some(sup) = self.supply.as_mut() else { return };
+        // With hunger switched off nobody needs food, so none is eaten.
+        if !sup.tuning.switches.hunger {
+            return;
+        }
         let ration = sup.tuning.stocks.food_kg_per_man_day * 0.5;
         let mut missed = false;
         for &i in &self.by_side[PLAYER_SIDE.index()] {
@@ -850,8 +879,12 @@ impl Sim {
     /// grow hungrier, and the very cold may get frostbite or die (decisions 48, 51 and 52).
     fn supply_minute(&mut self, tick: u64) {
         let Some(sup) = self.supply.as_mut() else { return };
+        let (cold_on, hunger_on) = (sup.tuning.switches.cold, sup.tuning.switches.hunger);
         let men = self.by_side[PLAYER_SIDE.index()].len() as f32;
-        sup.fuel_kg = (sup.fuel_kg - men * sup.tuning.stocks.fuel_kg_per_man_day / (24.0 * 60.0)).max(0.0);
+        // With cold switched off nobody needs fuel, so none burns.
+        if cold_on {
+            sup.fuel_kg = (sup.fuel_kg - men * sup.tuning.stocks.fuel_kg_per_man_day / (24.0 * 60.0)).max(0.0);
+        }
         let heated = sup.fuel_kg > 0.0;
         let celsius = self.clock.as_ref().map_or(crate::weather::DEFAULT_CELSIUS, |c| {
             c.weather.celsius_at(c.calendar.local_seconds(tick as f64 * self.tuning.dt() as f64))
@@ -860,8 +893,14 @@ impl Sim {
         let mut losses = Vec::new();
         for &i in &self.by_side[PLAYER_SIDE.index()] {
             let s = &mut self.soldiers[i as usize];
+            if hunger_on {
+                s.minutes_since_meal = s.minutes_since_meal.saturating_add(1);
+            }
+            if !cold_on {
+                continue;
+            }
             let inside = self.squads[s.squad as usize].inside;
-            let hunger = ht.hunger(s.minutes_since_meal);
+            let hunger = ht.hunger(s.minutes_since_meal.saturating_sub(1));
             if inside {
                 if heated {
                     s.chill -= ct.warming_per_hour / 60.0 * ht.scale(hunger, ht.warming_factor);
@@ -872,7 +911,6 @@ impl Sim {
             }
             s.chill = s.chill.clamp(0.0, 1.0);
             s.worst_minutes = if !inside && s.chill >= 0.999 { s.worst_minutes + 1 } else { 0 };
-            s.minutes_since_meal = s.minutes_since_meal.saturating_add(1);
             if !inside {
                 if s.worst_minutes as f32 >= ct.death_after_hours_at_worst * 60.0 {
                     losses.push((i, Lost::Died, ct.death_chance_per_hour / 60.0));
@@ -885,6 +923,91 @@ impl Sim {
             if self.rng.unit() < p {
                 self.lose_man(i, why, tick);
             }
+        }
+    }
+
+    /// Puts the snow file in force (decisions 57 to 67), in a game with a calendar: fresh snow from
+    /// now on, the snowshoe squads, and the first morning's forecast. With snowfall switched off the
+    /// whole snow piece is off, as if there were no snow file.
+    pub fn start_snow(&mut self, file: SnowFile) -> Result<(), String> {
+        if self.clock.is_none() {
+            return Err("the snow file needs a game with a calendar".into());
+        }
+        if !file.switches.snowfall {
+            return Ok(());
+        }
+        for &q in &file.snowshoes.squads {
+            match self.squads.get_mut(q as usize) {
+                Some(sq) if sq.side == PLAYER_SIDE => sq.snowshoes = file.switches.snowshoes,
+                _ => return Err(format!("snow file: squad {q} is not one of ours")),
+            }
+        }
+        self.snow = Some(Snow::new(file, self.terrain.cols * self.terrain.rows));
+        let c = self.clock.as_ref().unwrap();
+        let t = c.calendar.local_seconds(self.game_seconds());
+        let lux = c.sky.lux;
+        self.spotting_range = self.sight_at(lux, t);
+        self.forecast(t);
+        Ok(())
+    }
+
+    /// How far a man can be spotted at local time `t` in light `lux`: the light's distance, cut
+    /// while snow falls (decision 62).
+    fn sight_at(&self, lux: f64, t: f64) -> f32 {
+        let clear = self.tuning.spotting.spotting_range_m;
+        let light = sky::spotting_distance(lux, &self.tuning.light, clear);
+        match (&self.snow, &self.clock) {
+            (Some(sn), Some(c)) => light * sn.tuning.sight_factor(c.weather.snowfall_at(t) as f32, clear),
+            _ => light,
+        }
+    }
+
+    /// The forecast at a dawn (local time `t`), for the day to 18:00 and the night after to 06:00
+    /// (decision 61): what the weather diary brings, but with the wrong-forecast chance each half
+    /// says otherwise. The seeded generator decides, so replays match.
+    fn forecast(&mut self, t: f64) {
+        let (Some(sn), Some(c)) = (&self.snow, &self.clock) else { return };
+        if !sn.tuning.switches.forecast {
+            return;
+        }
+        let midnight = (t / 86_400.0).floor() * 86_400.0;
+        let evening = (midnight + 18.0 * 3600.0).max(t);
+        let morning = midnight + 30.0 * 3600.0;
+        let truth = [
+            sn.tuning.amount(c.weather.snowfall_between(t, evening) as f32),
+            sn.tuning.amount(c.weather.snowfall_between(evening, morning) as f32),
+        ];
+        let mut said = truth;
+        if sn.tuning.switches.wrong_forecasts {
+            let chance = sn.tuning.forecast.wrong_chance;
+            for a in &mut said {
+                if self.rng.unit() < chance {
+                    *a = match *a {
+                        crate::snow::SnowAmount::None => crate::snow::SnowAmount::Light,
+                        _ => crate::snow::SnowAmount::None,
+                    };
+                }
+            }
+        }
+        self.snow.as_mut().unwrap().forecast = Some(Forecast { said, truth });
+    }
+
+    /// Once a game minute with the snow file: fresh snow falls as the diary says and settles
+    /// (decision 66), and the routes' copy of it is brought up to date.
+    fn snow_minute(&mut self, tick: u64) {
+        let (Some(sn), Some(c)) = (self.snow.as_mut(), &self.clock) else { return };
+        let t = c.calendar.local_seconds(tick as f64 * self.tuning.dt() as f64);
+        let fall = c.weather.snowfall_between(t, t + 60.0) as f32;
+        let keep = 0.5f32.powf(1.0 / (sn.tuning.settling.half_life_hours * 60.0));
+        sn.fallen_today += fall;
+        sn.untrodden = sn.untrodden * keep + fall;
+        let (loose, packed) = (&mut sn.loose, &mut sn.packed);
+        self.pool.install(|| {
+            loose.par_iter_mut().for_each(|l| *l = *l * keep + fall);
+            packed.par_iter_mut().for_each(|p| *p *= keep);
+        });
+        if sn.routes_see_snow() {
+            sn.for_routes = Arc::new(sn.loose.clone());
         }
     }
 
@@ -961,7 +1084,11 @@ impl Sim {
             let t = c.calendar.local_seconds((tick + 1) as f64 * self.tuning.dt() as f64);
             let before = c.sky.sun_altitude_deg;
             let sky = c.calendar.sky(t, c.weather.cloud_at(t), &self.tuning.light);
-            self.spotting_range = sky::spotting_distance(sky.lux, &self.tuning.light, self.tuning.spotting.spotting_range_m);
+            let falling = c.weather.snowfall_at(t) as f32;
+            self.spotting_range = self.sight_at(sky.lux, t);
+            if let Some(sn) = self.snow.as_mut() {
+                sn.falling = falling;
+            }
             let c = self.clock.as_mut().unwrap();
             c.sky = sky;
             if before < sky::DAWN_ALTITUDE_DEG && sky.sun_altitude_deg >= sky::DAWN_ALTITUDE_DEG {
@@ -976,8 +1103,12 @@ impl Sim {
                     sup.carried_yesterday = Some(std::mem::take(&mut sup.carried_today));
                     sup.missed_meals_yesterday = Some(std::mem::take(&mut sup.missed_meals_today));
                 }
+                if let Some(sn) = self.snow.as_mut() {
+                    sn.fallen_yesterday = Some(std::mem::take(&mut sn.fallen_today));
+                }
                 self.serve_meal();
                 self.change_shift();
+                self.forecast(t);
             } else if before > sky::DUSK_ALTITUDE_DEG && sky.sun_altitude_deg <= sky::DUSK_ALTITUDE_DEG {
                 c.night = true;
                 self.note(Event::Dusk);
@@ -1050,7 +1181,9 @@ impl Sim {
                         )
                     }
                 };
-                s.tiredness = if asleep { (s.tiredness - down).max(0.0) } else { (s.tiredness + up).min(1.0) };
+                if tt.enabled {
+                    s.tiredness = if asleep { (s.tiredness - down).max(0.0) } else { (s.tiredness + up).min(1.0) };
+                }
             }
             for q in self.squads.iter_mut().filter(|q| q.roster.is_some()) {
                 if q.inside {
@@ -1065,6 +1198,9 @@ impl Sim {
                 }
             }
             self.supply_minute(tick);
+        }
+        if self.snow.is_some() && tick.is_multiple_of(minute) {
+            self.snow_minute(tick);
         }
 
         // 2. Patrols.
@@ -1106,10 +1242,24 @@ impl Sim {
                 squads: &self.squads,
                 grid: &self.grid,
                 cold: self.supply.as_ref().map(|s| &s.tuning.cold),
+                snow: self.snow.as_ref(),
             };
             self.pool.install(|| self.soldiers.par_iter().map(|s| ctx.update(s)).collect())
         };
+        // Walking packs the fresh snow, man by man in soldier order (decision 66).
+        let packing = self.snow.as_ref().filter(|sn| sn.tuning.switches.trail_breaking).map(|sn| sn.tuning.packing_per_m(self.terrain.spacing));
         for (s, u) in self.soldiers.iter_mut().zip(updates) {
+            if let (Some(k), Some(sn)) = (packing, self.snow.as_mut()) {
+                let d = ((u.x - s.x).powi(2) + (u.y - s.y).powi(2)).sqrt();
+                if d > 0.0 {
+                    let (c, r) = self.terrain.nearest_point(u.x, u.y);
+                    let i = self.terrain.idx(c, r);
+                    let before = sn.loose[i];
+                    let after = before * (-k * d).exp();
+                    sn.loose[i] = after;
+                    sn.packed[i] += before - after;
+                }
+            }
             s.x = u.x;
             s.y = u.y;
             s.vx = u.vx;
@@ -1362,6 +1512,34 @@ impl Sim {
                     h.u32(q.today.carry_minutes);
                 }
             }
+            // Falling snow, where the snow file is in force: the fresh snow added up over the
+            // whole map, a sample of single points, the forecast and the snowshoes.
+            if let Some(sn) = &self.snow {
+                let (mut a, mut b) = (0.0f64, 0.0f64);
+                for (l, p) in sn.loose.iter().zip(&sn.packed) {
+                    a += *l as f64;
+                    b += *p as f64;
+                }
+                h.u64(a.to_bits());
+                h.u64(b.to_bits());
+                for i in (0..sn.loose.len()).step_by(997) {
+                    h.f32(sn.loose[i]);
+                }
+                h.f32(sn.falling);
+                h.f32(sn.untrodden);
+                h.f32(sn.fallen_today);
+                match sn.forecast {
+                    Some(f) => {
+                        for a in f.said.iter().chain(&f.truth) {
+                            h.u32(a.index());
+                        }
+                    }
+                    None => h.u32(0xFFFF),
+                }
+                for q in &self.squads {
+                    h.u32(q.snowshoes as u32);
+                }
+            }
         }
         h.finish()
     }
@@ -1386,6 +1564,8 @@ struct MoveCtx<'a> {
     grid: &'a SpatialGrid,
     /// Cold's numbers, with the supply file.
     cold: Option<&'a ColdTuning>,
+    /// Fresh snow, with the snow file.
+    snow: Option<&'a Snow>,
 }
 
 impl MoveCtx<'_> {
@@ -1486,6 +1666,11 @@ impl MoveCtx<'_> {
         let mut tired = tu.tiredness.walking_factor(s.tiredness);
         if let Some(cold) = self.cold {
             tired = tired.min(cold.walking_factor(s.chill)) * sq.pace;
+        }
+        // Fresh snow where he stands slows him, less on snowshoes (decision 66).
+        if let Some(sn) = self.snow {
+            let (c, r) = t.nearest_point(s.x, s.y);
+            tired *= sn.tuning.walking_factor(sn.loose[t.idx(c, r)], sq.snowshoes);
         }
         let mut step = tu.walking.speed_mps(grade) * tired * dt * ml.min(1.0);
         if to_slot && dist < step && px == 0.0 && py == 0.0 {

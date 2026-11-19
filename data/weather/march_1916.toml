@@ -13,7 +13,12 @@
 # overcast. Between two entries it changes evenly. Used by cold: men outside grow colder the lower
 # it is.
 #
-# The falling snow piece of step 2 will add snowfall to this diary.
+# Snowfall, in centimetres of fresh snow per hour (decision 60), INVENTED like the cloud and only
+# inside its overcast spells: a moderate fall on Tuesday by day (about 20 cm), a heavy one from
+# Thursday night into Friday (about 50 cm, heaviest in the night), and flurries on Sunday evening (a
+# few centimetres). Between two entries the rate changes evenly; before the first and after the last
+# it stays as it is, so keep a zero at each end of a fall. Used by falling snow (data/snow.toml):
+# about 1 cm an hour is light snow, 4 cm an hour heavy.
 
 cloud = [
     # Sunday afternoon before the week: broken cloud, clearing in the night.
@@ -90,4 +95,25 @@ temperature = [
     # Sunday night overcast.
     { at = "1916-03-12 20:00", celsius = -10.0 },
     { at = "1916-03-13 06:00", celsius = -11.0 },
+]
+
+snowfall = [
+    # Tuesday 7, under the day's overcast: about 20 cm.
+    { at = "1916-03-07 08:00", cm_per_hour = 0.0 },
+    { at = "1916-03-07 10:00", cm_per_hour = 3.3 },
+    { at = "1916-03-07 14:00", cm_per_hour = 3.3 },
+    { at = "1916-03-07 16:00", cm_per_hour = 0.0 },
+
+    # Thursday 9 at 20:00 to Friday 10 at 14:00: about 50 cm, heaviest in the night.
+    { at = "1916-03-09 20:00", cm_per_hour = 0.0 },
+    { at = "1916-03-09 23:00", cm_per_hour = 4.8 },
+    { at = "1916-03-10 04:00", cm_per_hour = 4.8 },
+    { at = "1916-03-10 08:00", cm_per_hour = 2.0 },
+    { at = "1916-03-10 14:00", cm_per_hour = 0.0 },
+
+    # Sunday 12, evening flurries under the incoming cloud: about 3 cm.
+    { at = "1916-03-12 19:00", cm_per_hour = 0.0 },
+    { at = "1916-03-12 20:00", cm_per_hour = 1.0 },
+    { at = "1916-03-12 22:00", cm_per_hour = 1.0 },
+    { at = "1916-03-12 23:00", cm_per_hour = 0.0 },
 ]

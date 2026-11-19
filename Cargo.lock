@@ -134,6 +134,7 @@ dependencies = [
  "alpine_sim",
  "bevy",
  "bevy_egui",
+ "rayon",
 ]
 
 [[package]]

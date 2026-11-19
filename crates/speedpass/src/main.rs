@@ -207,7 +207,7 @@ fn frame_check(view: &str, top: f64) -> Result<(FrameVerdict, String), String> {
         return Err(format!("{} not found: run `cargo build --release --workspace` first", exe.display()));
     }
     let out = Command::new(&exe)
-        .args(["--frame-check", &FRAME_CHECK_SECONDS.to_string(), "--view", view])
+        .args(["--frame-check", &FRAME_CHECK_SECONDS.to_string(), "--view", view, "--snowing", "40"])
         .output()
         .map_err(|e| format!("could not start the game: {e}"))?;
     let text = String::from_utf8_lossy(&out.stdout);
@@ -280,6 +280,17 @@ fn main() {
     let (diary, _) = Weather::load_march_1916().expect("weather diary");
     let places_toml = alpine_sim::roster::load_col_di_lana_1916_text().expect("places file");
     let supply_toml = alpine_sim::supply::load_text().expect("supply file");
+    // Falling snow in both runs (decisions 57 to 67), with 40 cm of fresh snow already lying, so
+    // every walk works through it, packs it and routes around it. The diary has no snow falling on
+    // Monday, so the light, and with it the line-of-sight work, stays at its heaviest.
+    let snow_toml = alpine_sim::snow::load_text().expect("snow file");
+    let with_snow = |sim: &mut Sim| {
+        sim.start_snow(alpine_sim::snow::SnowFile::from_toml(&snow_toml).expect("snow file")).expect("snow");
+        let sn = sim.snow.as_mut().expect("snow");
+        sn.loose.fill(40.0);
+        sn.untrodden = 40.0;
+        sn.for_routes = Arc::new(sn.loose.clone());
+    };
     // Run 1, the heaviest load: full daylight (noon on Monday), where men see furthest and
     // line-of-sight work is heaviest, with every squad moving on random orders.
     let step2 = || {
@@ -287,6 +298,7 @@ fn main() {
         let mut cal = scenario::step2_calendar(&terrain, &tuning).expect("calendar");
         cal.start = sky::DateTime::parse(&format!("{} 12:00", tuning.scenario.step2_first_day)).expect("noon").to_seconds();
         sim.set_clock(cal, diary.clone());
+        with_snow(&mut sim);
         sim
     };
     // Run 2 and the skip-ahead, the game as played: the work roster (decisions 39 to 43), starting
@@ -303,6 +315,7 @@ fn main() {
         // With carrying parties, cold and hunger on, as played, and one squad carrying around the
         // clock to a half-empty store, so the carrying walks are in the load too.
         sim.start_supply(alpine_sim::supply::SupplyFile::from_toml(&supply_toml).expect("supply file")).expect("supply places");
+        with_snow(&mut sim);
         let sup = sim.supply.as_mut().expect("supply");
         sup.food_kg = sup.food_cap_kg * 0.5;
         sup.fuel_kg = sup.fuel_cap_kg * 0.5;
@@ -319,7 +332,7 @@ fn main() {
     let wander_pass = t.frames_over == 0;
     println!();
     println!(
-        "{} Simulation, heaviest load: {n} soldiers, every squad moving on random orders, from noon on Monday, \
+        "{} Simulation, heaviest load: {n} soldiers, every squad moving on random orders through 40 cm of fresh snow, from noon on Monday, \
          {SIM_CHECK_MINUTES} game minutes ({} updates) run at {top}x speed in real time on {threads} threads. Judged per \
          frame of 1/60 s: the updates in each frame may use at most {:.2} ms together. Of {} frames, 99% used within \
          {:.2} ms, the busiest {:.2} ms; {} frames over the limit. Single updates, for information: each has \
@@ -363,7 +376,7 @@ fn main() {
     });
     println!();
     println!(
-        "{} Simulation, the game as played: the work roster, from {at} on Monday, {SIM_CHECK_MINUTES} game minutes run at \
+        "{} Simulation, the game as played: the work roster, with 40 cm of fresh snow lying, from {at} on Monday, {SIM_CHECK_MINUTES} game minutes run at \
          {top}x speed in real time. Of {} frames, 99% used within {:.2} ms, the busiest {:.2} ms; {} frames over the \
          {:.2} ms limit. {} Single updates, for information: typical {:.3} ms, slowest {:.3} ms.",
         if roster_pass { "PASS" } else { "FAIL" },

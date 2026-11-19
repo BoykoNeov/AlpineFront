@@ -128,6 +128,20 @@ fn scale_bar(ctx: &egui::Context, metres_per_px: f32) {
         });
 }
 
+/// On the map, in its top right corner, how hard it is snowing, in words (decision 63: the flakes
+/// are drawn in the 3D view only).
+fn snow_note(ctx: &egui::Context, sim: &Sim, free: Option<egui::Rect>) {
+    let Some(sn) = &sim.snow else { return };
+    let word = sn.tuning.falling_word(sn.falling);
+    if word.is_empty() {
+        return;
+    }
+    let Some(free) = free else { return };
+    egui::Area::new("snow_note".into()).fixed_pos(egui::pos2(free.max.x - 190.0, free.min.y + 12.0)).interactable(false).show(ctx, |ui| {
+        ui.label(egui::RichText::new(format!("Snowing: {word}")).size(16.0).italics().color(egui::Color32::from_rgb(40, 32, 24)));
+    });
+}
+
 /// "Mon 6 Mar 1916 06:42, night, overcast, seeing 15 m" with a calendar; the game time without.
 fn clock_text(sim: &Sim) -> String {
     match (sim.now(), &sim.clock) {
@@ -140,8 +154,12 @@ fn clock_text(sim: &Sim) -> String {
             } else {
                 "night"
             };
+            let snowing = match &sim.snow {
+                Some(sn) if !sn.tuning.falling_word(sn.falling).is_empty() => format!(", snowing ({})", sn.tuning.falling_word(sn.falling)),
+                _ => String::new(),
+            };
             format!(
-                "{} {}, {light}, {}, seeing {:.0} m",
+                "{} {}, {light}, {}{snowing}, seeing {:.0} m",
                 now.short_date(),
                 now.hhmm(),
                 sky::cloud_words(c.sky.cloud),
@@ -198,7 +216,7 @@ fn roster_table(ui: &mut egui::Ui, link: &mut SimLink, selection: &mut Selection
     let ours: Vec<u32> =
         sim.squads.iter().filter(|q| q.side == PLAYER_SIDE && q.roster.is_some() && !q.members.is_empty()).map(|q| q.id).collect();
     // The carry duty exists only with carrying parties, cold and hunger on (decision 46).
-    let duties: &[Duty] = if sim.supply.is_some() { &[Duty::Guard, Duty::Rest, Duty::Carry] } else { &[Duty::Guard, Duty::Rest] };
+    let duties: &[Duty] = if sim.carrying_on() { &[Duty::Guard, Duty::Rest, Duty::Carry] } else { &[Duty::Guard, Duty::Rest] };
     if ours.is_empty() {
         return;
     }
@@ -213,7 +231,10 @@ fn roster_table(ui: &mut egui::Ui, link: &mut SimLink, selection: &mut Selection
         ui.end_row();
         for &q in &ours {
             let Some(r) = sim.roster_shown(q as usize) else { continue };
-            if ui.selectable_label(selection.squad == Some(q), format!("{q}")).on_hover_text("Select this squad").clicked() {
+            let shoes = sim.squads[q as usize].snowshoes;
+            let label = if shoes { format!("{q} (snowshoes)") } else { format!("{q}") };
+            let hover = if shoes { "Select this squad. It has snowshoes: fresh snow slows it less, so it is the one to break a trail." } else { "Select this squad" };
+            if ui.selectable_label(selection.squad == Some(q), label).on_hover_text(hover).clicked() {
                 select = Some(q);
             }
             for night in [false, true] {
@@ -331,6 +352,13 @@ pub fn panels(
                     .on_hover_text("What the kitchen cavern holds, in days for the company. Set squads to carry by day or night to fill it from the Sief dump.");
                 ui.separator();
             }
+            if let Some(sn) = &link.sim.snow
+                && sn.untrodden >= 0.5
+            {
+                ui.label(format!("Fresh snow {:.0} cm", sn.untrodden))
+                    .on_hover_text("Fresh snow lying where nobody has walked. It slows men wading through it (less on snowshoes); paths walked by a squad or more are packed and quicker, and routes use them.");
+                ui.separator();
+            }
             let paused = link.paused;
             let skipping = link.skipping;
             let waiting = link.dawn_screen;
@@ -408,6 +436,9 @@ pub fn panels(
             if !link.sim.places.is_empty() {
                 ui.checkbox(&mut o.places, "Lookout posts and shelters");
             }
+            if link.sim.snow.is_some() {
+                ui.checkbox(&mut o.snow, "Fresh snow and the tracks packed in it");
+            }
 
             ui.separator();
             ui.heading("Spotting");
@@ -433,6 +464,18 @@ pub fn panels(
                 Some(q) => {
                     let sq = &sim.squads[q as usize];
                     ui.label(format!("{} squad {}, {} men", sq.side.name(), sq.id, sq.members.len()));
+                    if let (Some(sn), Some(&lead)) = (&sim.snow, sq.members.first()) {
+                        let s = &sim.soldiers[lead as usize];
+                        let (c, r) = sim.terrain.nearest_point(s.x, s.y);
+                        let cm = sn.loose[sim.terrain.idx(c, r)];
+                        let shoes = sq.snowshoes && sn.tuning.switches.snowshoes;
+                        let feet = if shoes { "on snowshoes" } else { "on foot" };
+                        ui.label(format!(
+                            "They go {feet}; fresh snow where they stand: {:.0} cm (they walk at {:.0}% of their speed in it).",
+                            cm,
+                            sn.tuning.walking_factor(cm, shoes) * 100.0
+                        ));
+                    }
                     if let Some(s) = selection.soldier {
                         let sd = &sim.soldiers[s as usize];
                         ui.label(format!(
@@ -556,6 +599,7 @@ pub fn panels(
     free.0 = Some(egui::Rect::from_min_max(egui::pos2(side.response.rect.max.x, top.response.rect.max.y), full.max));
     if *mode == ViewMode::Map {
         scale_bar(ctx, map.scale);
+        snow_note(ctx, &link.sim, free.0);
     }
     if link.dawn_screen {
         dawn_window(ctx, &mut link, &mut selection);

@@ -26,6 +26,8 @@ pub type TerrainMaterial = ExtendedMaterial<StandardMaterial, TerrainExt>;
 pub const FLAG_CONTOURS: u32 = 1;
 pub const FLAG_STEEP: u32 = 2;
 pub const FLAG_VIEWSHED: u32 = 4;
+/// Fresh snow and the tracks packed in it (games with the snow file).
+pub const FLAG_SNOW: u32 = 8;
 
 #[derive(Clone, Copy, Debug, Default, Reflect, ShaderType)]
 pub struct TerrainSettings {
@@ -48,6 +50,11 @@ pub struct TerrainExt {
     #[texture(101)]
     #[sampler(102)]
     pub viewshed: Handle<Image>,
+    /// One texel per grid point: red = loose fresh snow (1 = 80 cm), green = how much of a packed
+    /// track it is. Shared with the map; updated by `snow_view`.
+    #[texture(103)]
+    #[sampler(104)]
+    pub snow: Handle<Image>,
 }
 
 impl MaterialExtension for TerrainExt {
@@ -60,6 +67,7 @@ impl MaterialExtension for TerrainExt {
 pub struct TerrainHandles {
     pub material: Handle<TerrainMaterial>,
     pub viewshed: Handle<Image>,
+    pub snow: Handle<Image>,
 }
 
 pub struct TerrainViewPlugin;
@@ -128,6 +136,15 @@ pub fn spawn_terrain(
     );
     image.sampler = ImageSampler::linear();
     let viewshed = images.add(image);
+    let mut snow_image = Image::new(
+        Extent3d { width: t.cols as u32, height: t.rows as u32, depth_or_array_layers: 1 },
+        TextureDimension::D2,
+        vec![0u8; t.cols * t.rows * 2],
+        TextureFormat::Rg8Unorm,
+        RenderAssetUsages::MAIN_WORLD | RenderAssetUsages::RENDER_WORLD,
+    );
+    snow_image.sampler = ImageSampler::linear();
+    let snow = images.add(snow_image);
     let material = materials.add(ExtendedMaterial {
         base: StandardMaterial {
             base_color: Color::WHITE,
@@ -147,6 +164,7 @@ pub fn spawn_terrain(
                 spacing: t.spacing,
             },
             viewshed: viewshed.clone(),
+            snow: snow.clone(),
         },
     });
     for r0 in (0..t.rows - 1).step_by(CHUNK) {
@@ -158,7 +176,7 @@ pub fn spawn_terrain(
             ));
         }
     }
-    commands.insert_resource(TerrainHandles { material, viewshed });
+    commands.insert_resource(TerrainHandles { material, viewshed, snow });
 }
 
 /// Where a ray from the camera first meets the ground, in simulation metres.

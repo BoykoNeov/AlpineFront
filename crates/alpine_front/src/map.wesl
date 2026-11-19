@@ -25,10 +25,13 @@ struct TerrainSettings {
 @group(constants::MATERIAL_BIND_GROUP) @binding(3) var relief_sampler: sampler;
 @group(constants::MATERIAL_BIND_GROUP) @binding(4) var viewshed_texture: texture_2d<f32>;
 @group(constants::MATERIAL_BIND_GROUP) @binding(5) var viewshed_sampler: sampler;
+@group(constants::MATERIAL_BIND_GROUP) @binding(6) var snow_texture: texture_2d<f32>;
+@group(constants::MATERIAL_BIND_GROUP) @binding(7) var snow_sampler: sampler;
 
 const FLAG_CONTOURS: u32 = 1u;
 const FLAG_STEEP: u32 = 2u;
 const FLAG_VIEWSHED: u32 = 4u;
+const FLAG_SNOW: u32 = 8u;
 
 // Colours are written as on screen (sRGB) and converted to the linear values the GPU blends in.
 fn lin(c: vec3<f32>) -> vec3<f32> {
@@ -119,6 +122,7 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
     );
     let relief = textureSample(relief_texture, relief_sampler, uv).rg;
     let view = textureSample(viewshed_texture, viewshed_sampler, uv).r;
+    let snow = textureSample(snow_texture, snow_sampler, uv).rg;
     let contour_value = g.h / settings.contour_interval;
     let minor = line(contour_value, 0.8);
     let major = line(contour_value / 5.0, 1.5);
@@ -175,6 +179,14 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
     }
     if (settings.flags & FLAG_STEEP) != 0u && up < settings.steep_cos {
         rgb = mix(rgb, lin(vec3<f32>(0.78, 0.1, 0.05)), 0.5);
+    }
+    // Fresh snow as a faint cold wash by its depth; packed tracks as dotted paths, like the foot
+    // paths on a staff map. The dots are fixed to the screen so they stay crisp at any zoom.
+    if (settings.flags & FLAG_SNOW) != 0u {
+        rgb = mix(rgb, lin(vec3<f32>(0.86, 0.9, 0.96)), clamp(snow.r * 1.5, 0.0, 0.45));
+        let cell = fract(in.position.xy / 4.0) - vec2<f32>(0.5);
+        let dot_mark = 1.0 - smoothstep(0.22, 0.38, length(cell));
+        rgb = mix(rgb, lin(vec3<f32>(0.2, 0.15, 0.12)), smoothstep(0.15, 0.6, snow.g) * dot_mark * 0.9);
     }
 
     // The 1 km grid, in faint blue pencil.

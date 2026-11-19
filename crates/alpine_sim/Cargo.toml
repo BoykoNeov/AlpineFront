@@ -34,3 +34,9 @@ harness = false
 [[test]]
 name = "supply"
 harness = false
+
+# The locked falling-snow and rule-switch tests (docs/scenario-tests.md, 38 to 44).
+# Run with: cargo test --release -p alpine_sim --test snow
+[[test]]
+name = "snow"
+harness = false

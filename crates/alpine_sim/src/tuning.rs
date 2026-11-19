@@ -26,6 +26,9 @@ pub struct Tuning {
 /// with a work roster.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct TirednessTuning {
+    /// Tiredness on or off (decision 65); off, men never tire.
+    #[serde(default = "yes")]
+    pub enabled: bool,
     /// Hours awake that take a fresh man to exhausted.
     pub hours_awake_to_exhausted: f32,
     /// Hours asleep in a shelter that take an exhausted man to fresh.
@@ -39,12 +42,17 @@ pub struct TirednessTuning {
 impl Default for TirednessTuning {
     fn default() -> Self {
         TirednessTuning {
+            enabled: true,
             hours_awake_to_exhausted: 18.0,
             hours_asleep_to_fresh: 8.0,
             exhausted_spotting_factor: 0.5,
             exhausted_walking_factor: 0.7,
         }
     }
+}
+
+fn yes() -> bool {
+    true
 }
 
 /// Light and how far a man can be seen in it (decisions 33 to 35).

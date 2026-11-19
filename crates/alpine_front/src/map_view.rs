@@ -78,6 +78,10 @@ pub struct MapMaterial {
     #[texture(4)]
     #[sampler(5)]
     pub viewshed: Handle<Image>,
+    /// Shared with the 3D view: fresh snow and the packed tracks.
+    #[texture(6)]
+    #[sampler(7)]
+    pub snow: Handle<Image>,
 }
 
 impl Material2d for MapMaterial {
@@ -258,6 +262,7 @@ fn spawn_map(
         heights: images.add(heights_image(t)),
         relief: images.add(relief_image(t)),
         viewshed: terrain.viewshed.clone(),
+        snow: terrain.snow.clone(),
     });
     commands.spawn((
         Mesh2d(meshes.add(Rectangle::new(w, h))),

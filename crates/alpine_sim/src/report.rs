@@ -41,7 +41,16 @@ pub fn morning_report(sim: &Sim) -> Option<MorningReport> {
 
     let sky = clock.sky;
     let mut weather = vec![format!("Sky {}. Moon {}.", sky::cloud_words(sky.cloud), sky::moon_words(sky.moon_lit, sky.moon_waxing))];
+    if let Some(sn) = &sim.snow {
+        let word = sn.tuning.falling_word(sn.falling);
+        if !word.is_empty() {
+            weather.push(format!("Snow is falling, {word}."));
+        }
+    }
     weather.push(format!("A man can be spotted at about {:.0} m now.", sim.spotting_range));
+    if let Some(f) = sim.snow.as_ref().and_then(|s| s.forecast) {
+        weather.push(f.words());
+    }
 
     let mut events = Vec::new();
     // Squads whose men are all lost are not counted.
@@ -65,6 +74,7 @@ pub fn morning_report(sim: &Sim) -> Option<MorningReport> {
                 .into(),
         );
         supply_lines(sim, None, &mut events);
+        snow_lines(sim, None, &mut events);
         roster_lines(sim, &mut events);
         return Some(MorningReport { title, weather, events });
     };
@@ -128,8 +138,37 @@ pub fn morning_report(sim: &Sim) -> Option<MorningReport> {
         events.push(format!("{line}."));
     }
     supply_lines(sim, Some(prev_tick), &mut events);
+    snow_lines(sim, Some(prev_tick), &mut events);
     roster_lines(sim, &mut events);
     Some(MorningReport { title, weather, events })
+}
+
+/// Falling snow's part of the report (decisions 57 to 67): what fell, what lies, who has snowshoes.
+fn snow_lines(sim: &Sim, since_tick: Option<u64>, events: &mut Vec<String>) {
+    let Some(sn) = &sim.snow else { return };
+    if since_tick.is_some() {
+        let fell = sn.fallen_yesterday.unwrap_or(0.0);
+        if fell >= 0.5 {
+            events.push(format!("Snow: {fell:.0} cm of fresh snow fell."));
+        }
+    }
+    if sn.untrodden >= 2.0 && sn.tuning.switches.slows_walking {
+        let tracks = if sn.tuning.switches.trail_breaking { " Paths walked by a squad or more are packed and quicker." } else { "" };
+        events.push(format!(
+            "Fresh snow lies about {:.0} cm deep where nobody has walked; men wading through it are slowed, those on snowshoes less.{tracks}",
+            sn.untrodden
+        ));
+    }
+    if sn.tuning.switches.snowshoes {
+        let shoes: Vec<u32> = sim.squads.iter().filter(|q| q.snowshoes && !q.members.is_empty()).map(|q| q.id).collect();
+        if !shoes.is_empty() {
+            let mut s = squad_list(&shoes);
+            if let Some(f) = s.get_mut(0..1) {
+                f.make_ascii_uppercase();
+            }
+            events.push(format!("{s} {} snowshoes.", if shoes.len() == 1 { "has" } else { "have" }));
+        }
+    }
 }
 
 /// "squads 0, 1 and 4" / "squad 3".
@@ -204,7 +243,7 @@ fn roster_lines(sim: &Sim, events: &mut Vec<String>) {
     events.push(format!("{line}."));
 
     let n = |f: &dyn Fn(Duty, Duty) -> bool| ours.iter().filter(|q| q.roster.is_some_and(|r| f(r.day, r.night))).count();
-    let carry = if sim.supply.is_some() {
+    let carry = if sim.carrying_on() {
         format!(
             ", {} carrying by day, {} by night",
             count(n(&|d, _| d == Duty::Carry)),
@@ -271,17 +310,23 @@ fn supply_lines(sim: &Sim, since_tick: Option<u64>, events: &mut Vec<String>) {
             events.push(format!("{n} {} {words} ({}).", if n == 1 { "man" } else { "men" }, squad_list(&ids)));
         }
     }
-    // How cold and hungry the men are now, man by man.
+    // How cold and hungry the men are now, man by man (each only where it is switched on).
     let ct = &sup.tuning.cold;
     let ht = &sup.tuning.hunger;
+    let (cold_on, hunger_on) = (sup.tuning.switches.cold, sup.tuning.switches.hunger);
     let ours: Vec<u32> = sim.squads.iter().filter(|q| q.side == PLAYER_SIDE).flat_map(|q| q.members.iter().copied()).collect();
     let tally = |f: &dyn Fn(u32) -> &'static str, words: [&str; 3]| -> String {
         let n: Vec<usize> = words.iter().map(|w| ours.iter().filter(|&&m| f(m) == *w).count()).collect();
         format!("{} {}, {} {}, {} {}", n[0], words[0], n[1], words[1], n[2], words[2])
     };
-    events.push(format!(
-        "The men now: {}; {}.",
-        tally(&|m| ct.word(sim.soldiers[m as usize].chill), ["warm", "cold", "very cold"]),
-        tally(&|m| ht.word(sim.soldiers[m as usize].minutes_since_meal), ["fed", "hungry", "starving"])
-    ));
+    let mut parts = Vec::new();
+    if cold_on {
+        parts.push(tally(&|m| ct.word(sim.soldiers[m as usize].chill), ["warm", "cold", "very cold"]));
+    }
+    if hunger_on {
+        parts.push(tally(&|m| ht.word(sim.soldiers[m as usize].minutes_since_meal), ["fed", "hungry", "starving"]));
+    }
+    if !parts.is_empty() {
+        events.push(format!("The men now: {}.", parts.join("; ")));
+    }
 }

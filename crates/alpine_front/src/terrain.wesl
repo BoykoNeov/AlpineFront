@@ -21,10 +21,13 @@ struct TerrainSettings {
 @group(constants::MATERIAL_BIND_GROUP) @binding(100) var<uniform> settings: TerrainSettings;
 @group(constants::MATERIAL_BIND_GROUP) @binding(101) var viewshed_texture: texture_2d<f32>;
 @group(constants::MATERIAL_BIND_GROUP) @binding(102) var viewshed_sampler: sampler;
+@group(constants::MATERIAL_BIND_GROUP) @binding(103) var snow_texture: texture_2d<f32>;
+@group(constants::MATERIAL_BIND_GROUP) @binding(104) var snow_sampler: sampler;
 
 const FLAG_CONTOURS: u32 = 1u;
 const FLAG_STEEP: u32 = 2u;
 const FLAG_VIEWSHED: u32 = 4u;
+const FLAG_SNOW: u32 = 8u;
 
 // Summer ground: forest green low down, meadow higher up, grey rock where steep.
 fn ground_colour(height: f32, up: f32) -> vec3<f32> {
@@ -52,7 +55,16 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> Fragment
     let face = normalize(cross(dpdx(wp), dpdy(wp)));
     let up = abs(face.y);
     // Colour follows the smooth slope, so the ground doesn't speckle triangle by triangle.
-    let colour = ground_colour(wp.y, abs(normalize(in.world_normal).y));
+    var colour = ground_colour(wp.y, abs(normalize(in.world_normal).y));
+    let x_cells = (wp.x - settings.min_x) / settings.spacing;
+    let y_cells = (-wp.z - settings.min_y) / settings.spacing;
+    let uv = vec2<f32>((x_cells + 0.5) / settings.cols, (y_cells + 0.5) / settings.rows);
+    // Fresh snow whitens the ground by its depth; packed tracks show as grey-blue paths.
+    if (settings.flags & FLAG_SNOW) != 0u {
+        let snow = textureSample(snow_texture, snow_sampler, uv).rg;
+        colour = mix(colour, vec3<f32>(0.80, 0.82, 0.86), clamp(snow.r * 3.0, 0.0, 0.9));
+        colour = mix(colour, vec3<f32>(0.22, 0.24, 0.30), smoothstep(0.1, 0.5, snow.g) * 0.85);
+    }
     pbr_input.material.base_color = vec4<f32>(colour, 1.0);
 
     var out: FragmentOutput;
@@ -64,9 +76,6 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> Fragment
     }
 
     if (settings.flags & FLAG_VIEWSHED) != 0u {
-        let x_cells = (wp.x - settings.min_x) / settings.spacing;
-        let y_cells = (-wp.z - settings.min_y) / settings.spacing;
-        let uv = vec2<f32>((x_cells + 0.5) / settings.cols, (y_cells + 0.5) / settings.rows);
         let v = textureSample(viewshed_texture, viewshed_sampler, uv).r;
         if v < 0.25 {
             rgb = rgb * 0.55;

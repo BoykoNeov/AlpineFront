@@ -99,6 +99,8 @@ new_contact_after_unseen_minutes = 30.0
 [tiredness]
 # The work roster (decisions 39 and 43). A man tires while awake and recovers while asleep in a
 # shelter on rest duty. Only the player's men tire for now; the Italians follow scripted patrols.
+# Tiredness on or off (decision 65): off, men never tire.
+enabled = true
 # Hours awake that take a fresh man to exhausted.
 hours_awake_to_exhausted = 18.0
 # Hours asleep that take an exhausted man to fresh.

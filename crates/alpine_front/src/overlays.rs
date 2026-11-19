@@ -4,7 +4,7 @@
 
 use crate::map_view::{MapHandles, MapMaterial};
 use crate::sim_link::SimLink;
-use crate::terrain_view::{FLAG_CONTOURS, FLAG_STEEP, FLAG_VIEWSHED, TerrainHandles, TerrainMaterial, to_world};
+use crate::terrain_view::{FLAG_CONTOURS, FLAG_SNOW, FLAG_STEEP, FLAG_VIEWSHED, TerrainHandles, TerrainMaterial, to_world};
 use crate::units::Selection;
 use crate::view::ViewMode;
 use alpine_sim::los;
@@ -24,6 +24,8 @@ pub struct OverlaySettings {
     pub contours: bool,
     pub steep: bool,
     pub viewshed: bool,
+    /// Fresh snow and the tracks packed in it (games with the snow file).
+    pub snow: bool,
     pub spotting: SpotLines,
     pub routes: bool,
     /// The work roster's lookout posts and shelters, with their names.
@@ -32,7 +34,7 @@ pub struct OverlaySettings {
 
 impl Default for OverlaySettings {
     fn default() -> Self {
-        OverlaySettings { contours: true, steep: false, viewshed: false, spotting: SpotLines::Everyone, routes: true, places: true }
+        OverlaySettings { contours: true, steep: false, viewshed: false, snow: true, spotting: SpotLines::Everyone, routes: true, places: true }
     }
 }
 
@@ -108,6 +110,9 @@ fn apply_flags(
     }
     if settings.viewshed {
         flags |= FLAG_VIEWSHED;
+    }
+    if settings.snow {
+        flags |= FLAG_SNOW;
     }
     if let Some(mut m) = materials.get_mut(&handles.material) {
         m.extension.settings.flags = flags;
