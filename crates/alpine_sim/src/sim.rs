@@ -246,8 +246,11 @@ impl FieldJob {
 
 /// A man within this distance of his route point moves on to the next one.
 const WAYPOINT_REACHED_M: f32 = 1.5;
-/// Moving less than this in a tick counts as standing still (1 cm per second at 10 ticks a second;
-/// the slowest walking speed, straight up a 45° slope, is about 3 cm per second).
+/// Moving less than this in a tick counts as standing still (1 cm per second at 10 ticks a second).
+/// The slowest walk on bare ground, straight up a 45° slope, is about 3 cm per second; since falling
+/// snow, a tired, cold, loaded man in deep snow on such ground can be slower than this, and is then
+/// treated as held up (he ignores personal space and re-joins his route). Harmless so far: every
+/// trip in a played week completed. A number to watch when tuning.
 const STILL_BELOW_M_PER_TICK: f32 = 0.001;
 /// After this many ticks standing still a man ignores personal space until he moves again.
 const IGNORE_SPACE_AFTER_TICKS: u32 = 10;

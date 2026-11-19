@@ -104,14 +104,15 @@ rules only; how many days the stores last or how cold a night gets are numbers, 
 
 Run them with `cargo test --release -p alpine_sim --test supply`.
 
-## Step 2: falling snow and the rule switches (approved 2026-11-19)
+## Step 2: falling snow and the rule switches (2026-11-19; 38 to 41 and 44 approved, 42 and 43 not yet)
 
 Fresh snow on each 10 m square of the map, trodden tracks, snowshoes, sight in falling snow and the
 dawn forecast (decisions 57 to 67), and the on/off switches every rule has (decision 65). Numbers
 live in `data/snow.toml`; the week's snowfall is in the weather diary. Tests 1 to 37 run without the
 snow file, so there is no snow for them. These tests cover the lasting rules only (decision 56):
-how deep the snow lies or how long a walk takes are numbers, judged by playing. They were approved
-with the snow plan as a whole (decision 66).
+how deep the snow lies or how long a walk takes are numbers, judged by playing. Tests 38 to 41 and
+44 were approved with the snow plan as a whole (decision 66); 42 and 43 were added by Claude while
+building and wait for the director's approval.
 
 | # | Expectation |
 | --- | --- |
@@ -119,8 +120,8 @@ with the snow plan as a whole (decision 66).
 | 39 | **A packed track is quicker.** Walking the same way again, on the track it packed, a squad is quicker than when it broke the trail. |
 | 40 | **Snowshoes help.** Through the same fresh snow, a squad on snowshoes is quicker than one on foot. |
 | 41 | **Falling snow cuts sight.** While snow falls, a man is spotted at a shorter distance than without it, by day and by night. |
-| 42 | **Routes use tracks.** With deep loose snow all round, a squad's route follows a packed track that bends away from the way it would take on bare ground. |
-| 43 | **Forecasts can be wrong.** With wrong forecasts switched off, every dawn forecast matches the weather diary; with the chance of a wrong one made certain, every forecast is wrong. |
+| 42 | *(Drafted by Claude 2026-11-19, not yet approved by the director; from decision 67.)* **Routes use tracks.** With deep loose snow all round, a squad's route follows a packed track that bends away from the way it would take on bare ground. |
+| 43 | *(Drafted by Claude 2026-11-19, not yet approved by the director; from decision 61.)* **Forecasts can be wrong.** With wrong forecasts switched off, every dawn forecast matches the weather diary; with the chance of a wrong one made certain, every forecast is wrong. |
 | 44 | **Every switch, turned off, gives the game without its rule.** Snowfall off plays exactly as no snow file; snowshoes off exactly as nobody having them; with trail breaking off nobody packs snow; with slowing off a walk takes exactly as long as on bare ground; with routes off routes come from the ground alone; with sight off snow does not shorten sight; with the forecast off there is none. Tiredness off: nobody tires. Cold off: nobody grows cold and no fuel burns. Hunger off: nobody grows hungry and no food is eaten. Carrying off: a squad set to carry rests. |
 
 Run them with `cargo test --release -p alpine_sim --test snow`.
