@@ -311,3 +311,6 @@ weather.
       deep. No height from before the war has been found; if one turns up, the rebuild script
       takes it as a single number.
 - [ ] Does Veneto's laser-scan data cover Col di Lana in finer detail than its 10 m terrain grid?
+- [ ] Night sight in heavy snow: falling snow cuts the night spotting distance by the same share as
+      the day's (decision 62), which leaves about 4 to 8 m in heavy snow at night. Judge it when the
+      night raid is built: raiders may reach the posts unseen. The numbers are in `data/snow.toml`.
