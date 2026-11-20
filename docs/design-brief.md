@@ -262,7 +262,7 @@ hardware.
      Flakes fall around the camera in the 3D view; the map says in words how hard it snows; both
      views draw the fresh snow and the tracks (decision 63). The numbers live in `data/snow.toml`
      (decision 66); every part of it has an on/off switch there (decision 65).
-   - The night raid (decisions 69 to 75). The simple enemy officer picks the night from what he
+   - The night raid (decisions 69 to 76). The simple enemy officer picks the night from what he
      could know (the sky, his own sometimes-wrong forecast, the men he counts at our posts at
      dusk), not before Tuesday and on Saturday night at the latest, and sets out between 02:00 and
      03:30. About 30 raiders in three squads wait hidden in the Italian front trench, 74 to 83 m

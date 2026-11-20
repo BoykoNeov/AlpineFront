@@ -201,6 +201,7 @@ fn test_switches(w: &World) -> Outcome {
 
         // Hearing off: until the first flare, nobody sees a raider farther than his eyes reach.
         let mut beyond = None;
+        let mut seen_before_flare = 0u32;
         raid_with(&|f| f.switches.hearing = false, &mut |sim| {
             let r = sim.raid.as_ref().unwrap();
             if !r.flares.is_empty() || r.record.flares > 0 || beyond.is_some() {
@@ -209,6 +210,7 @@ fn test_switches(w: &World) -> Outcome {
             for s in sim.soldiers.iter().filter(|s| s.side == Side::Austria) {
                 let range = sim.spotting_range_of(s.id);
                 for &e in s.sees.iter().filter(|&&e| r.is_raider(e)) {
+                    seen_before_flare += 1;
                     let en = &sim.soldiers[e as usize];
                     let d = ((s.x - en.x).powi(2) + (s.y - en.y).powi(2)).sqrt();
                     if d > range + 0.01 {
@@ -217,7 +219,12 @@ fn test_switches(w: &World) -> Outcome {
                 }
             }
         });
-        out.push(("hearing off: nobody notices a man beyond his sight", beyond.map_or(Ok(()), Err)));
+        let heard = match beyond {
+            Some(e) => Err(e),
+            None if seen_before_flare == 0 => Err("no raider was seen before the first flare, so nothing was checked".into()),
+            None => Ok(()),
+        };
+        out.push(("hearing off: nobody notices a man beyond his sight", heard));
 
         // Flares off: no flare goes up.
         let sim = raid_with(&|f| f.switches.flares = false, &mut |_| {});
